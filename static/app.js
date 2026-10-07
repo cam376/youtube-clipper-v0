@@ -69,7 +69,7 @@ function renderClips(clips) {
     card.innerHTML = `
       <h2>Clip ${clip.index}</h2>
       <video controls preload="metadata" src="${clip.url}"></video>
-      <div class="meta">${fmt(clip.start)} – ${fmt(clip.end)} · ${clip.duration}s</div>
+      <div class="meta">${fmt(clip.start)} – ${fmt(clip.end)} · ${clip.duration}s · ${layoutLabel(clip.layout)}</div>
       <div class="text">${escapeHtml(clip.text)}</div>
       <a class="download" href="${clip.url}?download=true" download="${clip.filename}">Download</a>
     `;
@@ -93,6 +93,10 @@ function resetUI() {
   errorBox.textContent = "";
   clipsBox.innerHTML = "";
   statusBox.classList.add("hidden");
+}
+
+function layoutLabel(layout) {
+  return { TWO_PERSON: "split-screen", SINGLE_PERSON: "face-centred", CENTER_CROP: "centre crop" }[layout] || "";
 }
 
 function fmt(seconds) {

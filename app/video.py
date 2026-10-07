@@ -9,7 +9,9 @@ from pathlib import Path
 OUT_W, OUT_H = 1080, 1920
 
 # Subtitle look: big white text with a black outline, placed in the lower third.
-ASS_HEADER = f"""[Script Info]
+# For split-screen clips the same style is used with Alignment 5 (middle-centre),
+# which puts the text on the seam between the two speakers, away from both faces.
+ASS_HEADER = """[Script Info]
 ScriptType: v4.00+
 PlayResX: {OUT_W}
 PlayResY: {OUT_H}
@@ -17,7 +19,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,5,2,2,60,60,420,1
+Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,5,2,{alignment},60,60,420,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -37,10 +39,11 @@ def _escape_ass(text: str) -> str:
 
 
 def build_subtitles(words: list[dict], clip_start: float, clip_end: float, ass_path: Path,
-                    max_words: int = 4) -> Path:
+                    max_words: int = 4, split_screen: bool = False) -> Path:
     """
     Group word timestamps into short chunks (a few words each) and write an
     ASS file whose times are relative to the clip start.
+    split_screen=True centres the captions vertically (safe zone between faces).
     """
     clip_words = [w for w in words if w["end"] > clip_start and w["start"] < clip_end]
     lines = []
@@ -63,7 +66,8 @@ def build_subtitles(words: list[dict], clip_start: float, clip_end: float, ass_p
             flush()
     flush()
 
-    ass_path.write_text(ASS_HEADER + "\n".join(lines) + "\n", encoding="utf-8")
+    header = ASS_HEADER.format(OUT_W=OUT_W, OUT_H=OUT_H, alignment=5 if split_screen else 2)
+    ass_path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
     return ass_path
 
 
@@ -75,24 +79,39 @@ def _ffmpeg_filter_path(p: Path) -> str:
     return s
 
 
-def render_clip(source: Path, start: float, end: float, ass_path: Path | None, out_path: Path) -> Path:
+def render_clip(source: Path, start: float, end: float, ass_path: Path | None, out_path: Path,
+                plan=None) -> Path:
     """
-    Cut [start, end] from `source`, scale+centre-crop to 1080x1920, burn
-    subtitles, encode H.264 + AAC.
+    Cut [start, end] from `source`, convert to 1080x1920, burn subtitles,
+    encode H.264 + AAC.
+
+    plan: optional framing.FramePlan. None or CENTER_CROP keeps the original
+    centre-crop behaviour; SINGLE_PERSON / TWO_PERSON use face-based crops
+    (the filtergraph is written to a side file so long expressions never hit
+    the command-line length limit).
     """
-    vf = (
-        f"scale=w={OUT_W}:h={OUT_H}:force_original_aspect_ratio=increase,"
-        f"crop={OUT_W}:{OUT_H},"
-        "setsar=1"
-    )
-    if ass_path is not None:
-        vf += f",ass='{_ffmpeg_filter_path(ass_path)}'"
+    ass_filter = f"ass='{_ffmpeg_filter_path(ass_path)}'" if ass_path is not None else None
+
+    if plan is not None and plan.layout != "CENTER_CROP":
+        from framing import build_filtergraph
+        script = out_path.with_suffix(".filter")
+        script.write_text(build_filtergraph(plan, ass_filter), encoding="utf-8")
+        video_args = ["-filter_complex_script", str(script), "-map", "[v]", "-map", "0:a?"]
+    else:
+        vf = (
+            f"scale=w={OUT_W}:h={OUT_H}:force_original_aspect_ratio=increase,"
+            f"crop={OUT_W}:{OUT_H},"
+            "setsar=1"
+        )
+        if ass_filter:
+            vf += f",{ass_filter}"
+        video_args = ["-vf", vf]
 
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}",
         "-i", str(source),
-        "-vf", vf,
+        *video_args,
         "-r", "30",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-ac", "2",

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.2.0 — 2026-10-07 — multi-person vertical framing
+
+- New `app/framing.py`: per-clip face detection (OpenCV YuNet, Haar fallback),
+  track linking across sampled frames, one layout per clip.
+- `TWO_PERSON`: top/bottom split-screen, each speaker cropped independently
+  (1080x960 halves, aspect preserved), captions moved to the centre seam.
+- `SINGLE_PERSON`: the 9:16 crop now follows the detected face instead of the
+  geometric centre.
+- `CENTER_CROP`: unchanged behaviour when no reliable face is found, and the
+  fallback for any analysis error.
+- Crop smoothing: moving average + dead zone + glide, no frame-by-frame jitter.
+- `DEBUG_FACES=true` writes a diagnostic contact sheet and JSON per clip.
+- New dependencies: opencv-python-headless, numpy.
+- Ranking, transcription, captions styling and YouTube import are untouched.
+
 ## v0.1.0 — 2026-10-07 — first working checkpoint
 
 Verified end to end on a real YouTube video on Windows.

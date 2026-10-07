@@ -13,12 +13,30 @@ YouTube URL
   -> yt-dlp download (app/youtube.py)
   -> FFmpeg audio extraction + faster-whisper transcript (app/transcription.py)
   -> 20-60 s candidate windows, scored by Ollama + Qwen (app/ranking.py)
-  -> FFmpeg cut, 9:16 centre crop, burned subtitles, H.264/AAC (app/video.py)
+  -> face analysis per clip: one person / two people / none (app/framing.py)
+  -> FFmpeg cut, 9:16 reframe, burned subtitles, H.264/AAC (app/video.py)
   -> clips served from output/<job_id>/ and shown on the page
 ```
 
 If Ollama is not running, the app falls back to a simple heuristic ranking and
 says so in the status line, so the pipeline still completes.
+
+## Vertical framing
+
+Each clip is analysed with OpenCV's YuNet face detector (model bundled in
+`app/models/`, Haar cascade fallback) on 2 frames per second, faces are
+linked into tracks, and one layout is chosen for the whole clip:
+
+| Layout          | When                                           | Result                                  |
+|-----------------|------------------------------------------------|-----------------------------------------|
+| `SINGLE_PERSON` | one face present in >= 30 % of samples        | 9:16 crop centred on the face           |
+| `TWO_PERSON`    | two faces each present in >= 40 % of samples, clearly apart | top/bottom split, 1080x960 each, captions on the seam |
+| `CENTER_CROP`   | no reliable face                               | the original centre crop                |
+
+Crop positions are smoothed (moving average + dead zone) so they stay still
+unless a person really moves. Set `DEBUG_FACES=true` to also write
+`clip_N_faces.jpg` (face boxes, track ids, crop regions, layout) and
+`clip_N_faces.json` next to each clip.
 
 ## Requirements
 
@@ -47,6 +65,7 @@ First run downloads the Whisper model (`small`, about 500 MB) from Hugging Face.
 | `WHISPER_COMPUTE`| `int8`                   | `float16` on GPU                          |
 | `OLLAMA_MODEL`   | `qwen2.5:3b`             | any Qwen model you have pulled            |
 | `OLLAMA_URL`     | `http://localhost:11434` |                                           |
+| `DEBUG_FACES`    | unset                    | `true` writes face/crop diagnostics per clip |
 
 ## Layout
 
@@ -57,7 +76,9 @@ app/
   youtube.py        isolated YouTube import provider
   transcription.py  FFmpeg audio extraction + faster-whisper
   ranking.py        candidate windows, Ollama scoring, selection
-  video.py          FFmpeg cut / crop / subtitles / export
+  framing.py        face detection, tracking, layout choice, crop smoothing
+  video.py          FFmpeg cut / reframe / subtitles / export
+  models/           YuNet face detection model (ONNX, Apache-2.0, from opencv_zoo)
 static/
   index.html, app.js, style.css
 output/             one folder per job (source, transcript, clips)

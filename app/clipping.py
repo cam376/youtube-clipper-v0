@@ -14,6 +14,7 @@ from youtube import download_youtube_video
 from transcription import extract_audio, transcribe
 from ranking import build_candidates, rank_candidates, select_best
 from video import build_subtitles, render_clip
+from framing import analyze_clip, plan_layout, save_debug_sheet, debug_enabled, LAYOUT_SPLIT, LAYOUT_CENTER
 
 STAGES = {
     "importing": "Importing video...",
@@ -63,9 +64,25 @@ def run_job(job: dict, url: str, job_dir: Path, public_prefix: str) -> None:
         clips = []
         for i, c in enumerate(chosen, start=1):
             _set(job, "clipping", f"clip {i}/{len(chosen)}")
-            ass = build_subtitles(transcript["words"], c["start"], c["end"], job_dir / f"clip_{i}.ass")
-            out = render_clip(source, c["start"], c["end"], ass, job_dir / f"clip_{i}.mp4")
+
+            # Face-aware framing: one layout per clip. Any failure in the
+            # analysis falls back to the original centre crop.
+            try:
+                analysis = analyze_clip(source, c["start"], c["end"])
+                plan = plan_layout(analysis)
+                if debug_enabled():
+                    save_debug_sheet(analysis, plan, job_dir / f"clip_{i}_faces.jpg")
+            except Exception as exc:  # noqa: BLE001
+                analysis, plan = None, None
+                job["framing_warning"] = f"face analysis failed, used centre crop ({exc.__class__.__name__}: {exc})"
+            layout = plan.layout if plan else LAYOUT_CENTER
+
+            ass = build_subtitles(transcript["words"], c["start"], c["end"], job_dir / f"clip_{i}.ass",
+                                  split_screen=(layout == LAYOUT_SPLIT))
+            out = render_clip(source, c["start"], c["end"], ass, job_dir / f"clip_{i}.mp4", plan)
             clips.append({
+                "layout": layout,
+                "layout_note": plan.note if plan else "",
                 "index": i,
                 "start": c["start"],
                 "end": c["end"],

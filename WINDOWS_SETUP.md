@@ -121,6 +121,19 @@ $env:WHISPER_COMPUTE = "float16"
 ```
 This needs a recent NVIDIA driver. If you get a DLL error, go back to `cpu`.
 
+## 7b. Face-aware framing (v0.2.0)
+
+No extra install: OpenCV comes from `requirements-lock.txt` and the face model
+is in the repo. To see what the framing decided for each clip:
+
+```powershell
+$env:DEBUG_FACES = "true"
+python app\main.py
+```
+Then open `output\<job_id>\clip_N_faces.jpg`. The title line shows the layout
+(`TWO_PERSON`, `SINGLE_PERSON`, `CENTER_CROP`) and why; coloured boxes are
+face tracks with their id and coverage, yellow/cyan rectangles are the crops.
+
 ## 8. Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -134,6 +147,8 @@ This needs a recent NVIDIA driver. If you get a DLL error, go back to `cpu`.
 | Windows Firewall prompt on first start | uvicorn opening port 8000 | allow on private networks; the server binds 127.0.0.1 only |
 | Clips play but no subtitles | Whisper found no words in that window | check `output\<job_id>\clip_N.ass` is non-empty |
 | Port 8000 already in use | another app | change the port at the bottom of `app\main.py` |
+| Two-person interview still centre-cropped | faces too small, turned away, or detected in < 40 % of samples | run with `DEBUG_FACES=true` and check coverage in the title line |
+| `ImportError: DLL load failed` from cv2 | missing Visual C++ runtime | install the Microsoft Visual C++ 2015-2022 Redistributable (x64) |
 
 ## 9. Record of the machine this was validated on
 
