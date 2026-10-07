@@ -3,10 +3,18 @@ FFmpeg operations: cut a section, convert to 1080x1920 (centre crop), burn
 subtitles, export H.264 / AAC MP4.
 """
 
+import functools
+import re
 import subprocess
 from pathlib import Path
 
 OUT_W, OUT_H = 1080, 1920
+
+# How a filtergraph file is handed to ffmpeg. FFmpeg 7.0 introduced the generic
+# "-/option FILE" form (load the option value from a file) and deprecated
+# "-filter_complex_script"; FFmpeg 9 removed the old option entirely.
+FILTER_SCRIPT_MODERN = "-/filter_complex"
+FILTER_SCRIPT_LEGACY = "-filter_complex_script"
 
 # Subtitle look: big white text with a black outline, placed in the lower third.
 # For split-screen clips the same style is used with Alignment 5 (middle-centre),
@@ -79,6 +87,45 @@ def _ffmpeg_filter_path(p: Path) -> str:
     return s
 
 
+@functools.lru_cache(maxsize=1)
+def ffmpeg_major_version() -> int | None:
+    """Major version of the ffmpeg on PATH, or None for git/unparseable builds."""
+    try:
+        out = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout
+    except OSError:
+        return None
+    m = re.match(r"ffmpeg version n?(\d+)\.", out)
+    return int(m.group(1)) if m else None
+
+
+def filter_script_args(script: Path, major: int | None = None) -> list[str]:
+    """
+    Arguments that make ffmpeg read the complex filtergraph from `script`.
+    FFmpeg < 7 only knows -filter_complex_script; 7 and 8 accept both;
+    9+ only knows -/filter_complex. Unknown versions get the modern form,
+    and render_clip retries with the other form if ffmpeg rejects it.
+    """
+    if major is None:
+        major = ffmpeg_major_version()
+    option = FILTER_SCRIPT_LEGACY if (major is not None and major < 7) else FILTER_SCRIPT_MODERN
+    return [option, str(script)]
+
+
+def _run_with_filter_script(script: Path, build_cmd) -> None:
+    """Run build_cmd(filter_args); on 'Unrecognized option' retry with the other syntax."""
+    primary = filter_script_args(script)
+    other = FILTER_SCRIPT_LEGACY if primary[0] == FILTER_SCRIPT_MODERN else FILTER_SCRIPT_MODERN
+    stderr = ""
+    for args in (primary, [other, str(script)]):
+        res = subprocess.run(build_cmd(args), capture_output=True, text=True)
+        if res.returncode == 0:
+            return
+        stderr = res.stderr.strip()
+        if "Unrecognized option" not in stderr:
+            break
+    raise RuntimeError(f"ffmpeg failed: {stderr[-2000:]}")
+
+
 def render_clip(source: Path, start: float, end: float, ass_path: Path | None, out_path: Path,
                 plan=None) -> Path:
     """
@@ -92,31 +139,32 @@ def render_clip(source: Path, start: float, end: float, ass_path: Path | None, o
     """
     ass_filter = f"ass='{_ffmpeg_filter_path(ass_path)}'" if ass_path is not None else None
 
+    def build_cmd(video_args: list[str]) -> list[str]:
+        return [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}",
+            "-i", str(source),
+            *video_args,
+            "-r", "30",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+            "-movflags", "+faststart",
+            str(out_path),
+        ]
+
     if plan is not None and plan.layout != "CENTER_CROP":
         from framing import build_filtergraph
         script = out_path.with_suffix(".filter")
         script.write_text(build_filtergraph(plan, ass_filter), encoding="utf-8")
-        video_args = ["-filter_complex_script", str(script), "-map", "[v]", "-map", "0:a?"]
-    else:
-        vf = (
-            f"scale=w={OUT_W}:h={OUT_H}:force_original_aspect_ratio=increase,"
-            f"crop={OUT_W}:{OUT_H},"
-            "setsar=1"
-        )
-        if ass_filter:
-            vf += f",{ass_filter}"
-        video_args = ["-vf", vf]
+        _run_with_filter_script(script, lambda fargs: build_cmd([*fargs, "-map", "[v]", "-map", "0:a?"]))
+        return out_path
 
-    cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}",
-        "-i", str(source),
-        *video_args,
-        "-r", "30",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-        "-movflags", "+faststart",
-        str(out_path),
-    ]
-    subprocess.run(cmd, check=True)
+    vf = (
+        f"scale=w={OUT_W}:h={OUT_H}:force_original_aspect_ratio=increase,"
+        f"crop={OUT_W}:{OUT_H},"
+        "setsar=1"
+    )
+    if ass_filter:
+        vf += f",{ass_filter}"
+    subprocess.run(build_cmd(["-vf", vf]), check=True)
     return out_path

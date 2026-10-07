@@ -56,6 +56,14 @@ Open http://localhost:8000 and paste a URL.
 
 First run downloads the Whisper model (`small`, about 500 MB) from Hugging Face.
 
+## Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+Renders synthetic clips with the ffmpeg on PATH and checks the complex
+filtergraph side-file option matches that ffmpeg (FFmpeg 6 through 9).
+
 ## Tuning (environment variables)
 
 | Variable         | Default                  | Notes                                     |

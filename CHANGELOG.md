@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.2.1 — 2026-10-07 — FFmpeg 9 compatibility
+
+- Face-framed clips are rendered with `-/filter_complex FILE` on FFmpeg 7+
+  (FFmpeg 9 removed `-filter_complex_script`); FFmpeg < 7 keeps the old
+  option. The version is read from `ffmpeg -version`, and a rejected option
+  is retried with the other form, so git builds without a numeric version
+  also work. The filtergraph itself and the side-file approach are unchanged.
+- ffmpeg errors on face-framed clips now surface ffmpeg's stderr in the job error.
+- `tests/test_ffmpeg_filter_script.py`: regression test, run with
+  `python -m unittest discover -s tests -v` against the ffmpeg on PATH.
+
 ## v0.2.0 — 2026-10-07 — multi-person vertical framing
 
 - New `app/framing.py`: per-clip face detection (OpenCV YuNet, Haar fallback),
