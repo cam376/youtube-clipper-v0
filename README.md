@@ -56,6 +56,11 @@ Open http://localhost:8000 and paste a URL.
 
 First run downloads the Whisper model (`small`, about 500 MB) from Hugging Face.
 
+## Deployment
+
+`DEPLOYMENT.md` covers the single-server private beta: Dockerfile,
+`docker compose up -d` with Ollama, volumes, HTTPS via Caddy, `GET /health`.
+
 ## Tests
 
 ```bash
@@ -74,6 +79,19 @@ filtergraph side-file option matches that ffmpeg (FFmpeg 6 through 9).
 | `OLLAMA_MODEL`   | `qwen2.5:3b`             | any Qwen model you have pulled            |
 | `OLLAMA_URL`     | `http://localhost:11434` |                                           |
 | `DEBUG_FACES`    | unset                    | `true` writes face/crop diagnostics per clip |
+| `HOST` / `PORT`  | `127.0.0.1` / `8000`     | bind address and port                     |
+| `OUTPUT_DIR`     | `./output`               | where jobs and clips are written          |
+| `MAX_CONCURRENT_JOBS` | `1`                 | jobs processed at once; others wait       |
+
+## Whisper model policy (v0.2.1)
+
+`small` is the production default. `medium` is an optional high-accuracy
+mode, never the default. Real measurements on the Windows test machine:
+
+| Source | Model | Clips | Wall time |
+|---|---|---|---|
+| 27 min two-person interview | `small` | 5/5 publishable | ~20 min |
+| 23m30 French video | `medium` | 5/5 publishable, captions only slightly better | ~50 min |
 
 ## Trying a larger Whisper model
 

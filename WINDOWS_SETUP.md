@@ -109,7 +109,7 @@ folder when you no longer need it; nothing else is stored.
 Set environment variables in the same PowerShell window before `python app\main.py`:
 
 ```powershell
-$env:WHISPER_MODEL = "medium"    # more accurate captions, especially French; 2-3x slower (default: small)
+$env:WHISPER_MODEL = "medium"    # optional high-accuracy mode; measured ~50 min for a 23m30 French video vs ~20 min for 27 min with small, captions only slightly better (default stays: small)
 $env:WHISPER_MODEL = "base"      # faster, less accurate transcription
 $env:OLLAMA_MODEL  = "qwen2.5:7b" # better ranking if you have the RAM (default: qwen2.5:3b)
 ```

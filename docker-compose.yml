@@ -1,0 +1,39 @@
+# Private beta deployment: the app + Ollama on one Linux server.
+#
+#   docker compose up -d --build
+#   docker compose exec ollama ollama pull qwen2.5:3b      # once
+#   curl http://127.0.0.1:8000/health
+#
+# The app is published on 127.0.0.1 only; put Caddy (or another HTTPS
+# reverse proxy) in front of it. See DEPLOYMENT.md.
+
+services:
+  app:
+    build: .
+    image: youtube-clipper:v0.2.1
+    container_name: clipper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}     # "medium" = optional high-accuracy mode
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+      OLLAMA_URL: http://ollama:11434
+      MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-1}
+      DEBUG_FACES: "false"
+    volumes:
+      - clipper_data:/data                        # clips + Whisper model cache
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: clipper-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama               # pulled Qwen weights
+    # No "ports": Ollama is reachable only from the app container.
+
+volumes:
+  clipper_data:
+  ollama_models:

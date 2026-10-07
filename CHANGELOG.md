@@ -1,34 +1,41 @@
 # Changelog
 
-## v0.2.2 — 2026-10-07 — two-person robustness, Whisper model switch
+## v0.2.1 — 2026-10-07 — release candidate, engine frozen
 
-- Framing: a second face is now "persistent" when it is detected in >= 25 % of
-  samples AND its detections span >= 70 % of the clip, in addition to the old
-  >= 40 % coverage rule. The dominance rule (second face < 0.5 x first) no
-  longer applies to a face that spans the clip. Track fragments of one person
-  (same seat, never overlapping in time) are merged before classification.
-  Thresholds for solo videos, the centre-crop fallback, crop smoothing and
-  the split-screen layout are unchanged.
-- Debug output (`DEBUG_FACES=true`) now records per track coverage, span,
-  longest gap and fragment count, plus separation, strength ratio, sample
-  count and all thresholds under `classification` in `clip_N_faces.json`.
-  The same numbers appear in each clip's `layout_note`.
-- Whisper: `WHISPER_MODEL` is read when a transcription starts (set it before
-  launching the server); the model is reloaded if it changes. The server logs
-  model, detected language, language probability and transcription duration,
-  and the page shows them in the status line at the end.
-- New tests: `tests/test_framing_classification.py`.
+Validated on real videos (Windows, CPU):
 
-## v0.2.1 — 2026-10-07 — FFmpeg 9 compatibility
+| Source | Whisper | Result | Wall time |
+|---|---|---|---|
+| 27 min two-person interview | `small` | 5/5 clips publishable, 5/5 split-screen, clean framing | ~20 min |
+| 23m30 French video | `medium` | 5/5 clips publishable, captions only slightly better than `small` | ~50 min |
 
-- Face-framed clips are rendered with `-/filter_complex FILE` on FFmpeg 7+
-  (FFmpeg 9 removed `-filter_complex_script`); FFmpeg < 7 keeps the old
-  option. The version is read from `ffmpeg -version`, and a rejected option
-  is retried with the other form, so git builds without a numeric version
-  also work. The filtergraph itself and the side-file approach are unchanged.
-- ffmpeg errors on face-framed clips now surface ffmpeg's stderr in the job error.
-- `tests/test_ffmpeg_filter_script.py`: regression test, run with
-  `python -m unittest discover -s tests -v` against the ffmpeg on PATH.
+Decision: `WHISPER_MODEL=small` is the production default. `medium` stays
+available as an optional high-accuracy mode via the environment variable.
+The clipping engine (ingestion, transcription, ranking, framing, captions,
+rendering) is frozen at this version.
+
+Engine fixes since v0.2.0:
+- FFmpeg 9: face-framed clips use `-/filter_complex FILE` on FFmpeg 7+
+  (`-filter_complex_script` was removed in 9); FFmpeg < 7 keeps the old
+  option, and a rejected option is retried with the other form.
+- Framing: a second face counts as persistent when detected in >= 25 % of
+  samples with detections spanning >= 70 % of the clip (in addition to the
+  >= 40 % coverage rule); the dominance rule no longer demotes a face that
+  spans the clip; track fragments of one person are merged. Fixed the one
+  interview clip that fell to SINGLE_PERSON.
+- `DEBUG_FACES=true` records coverage, span, longest gap, fragments,
+  separation, strength ratio, sample count and thresholds per clip.
+- `WHISPER_MODEL` is read when a transcription starts; model, detected
+  language and transcription time are logged and shown on the page.
+- Tests: `tests/test_ffmpeg_filter_script.py`, `tests/test_framing_classification.py`.
+
+Deployment (web layer only, engine untouched):
+- `Dockerfile`, `docker-compose.yml` (app + Ollama), `DEPLOYMENT.md`.
+- `HOST`, `PORT`, `OUTPUT_DIR`, `MAX_CONCURRENT_JOBS` environment variables;
+  jobs beyond the limit wait with "Waiting for a free slot...".
+- `GET /health`.
+- Only `clip_N.mp4` files are served from job folders; debug sheets,
+  transcripts and source videos are not exposed.
 
 ## v0.2.0 — 2026-10-07 — multi-person vertical framing
 
