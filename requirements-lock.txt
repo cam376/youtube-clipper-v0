@@ -1,0 +1,13 @@
+# Exact versions of the v0.1.0 checkpoint. Use this file to reproduce the
+# known-working install: pip install -r requirements-lock.txt
+fastapi==0.142.2
+starlette==1.6.0
+pydantic==2.13.5
+uvicorn[standard]==0.53.0
+yt-dlp==2026.8.19
+faster-whisper==1.2.1
+ctranslate2==4.8.2
+tokenizers==0.23.2
+onnxruntime==1.29.0
+av==19.0.1
+requests==2.34.2
