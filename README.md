@@ -30,7 +30,7 @@ linked into tracks, and one layout is chosen for the whole clip:
 | Layout          | When                                           | Result                                  |
 |-----------------|------------------------------------------------|-----------------------------------------|
 | `SINGLE_PERSON` | one face present in >= 30 % of samples        | 9:16 crop centred on the face           |
-| `TWO_PERSON`    | two faces each present in >= 40 % of samples, clearly apart | top/bottom split, 1080x960 each, captions on the seam |
+| `TWO_PERSON`    | two persistent faces, clearly apart. Persistent = detected in >= 40 % of samples, or >= 25 % with detections spanning >= 70 % of the clip | top/bottom split, 1080x960 each, captions on the seam |
 | `CENTER_CROP`   | no reliable face                               | the original centre crop                |
 
 Crop positions are smoothed (moving average + dead zone) so they stay still
@@ -68,12 +68,25 @@ filtergraph side-file option matches that ffmpeg (FFmpeg 6 through 9).
 
 | Variable         | Default                  | Notes                                     |
 |------------------|--------------------------|-------------------------------------------|
-| `WHISPER_MODEL`  | `small`                  | `base` is faster, `medium` more accurate  |
+| `WHISPER_MODEL`  | `small`                  | `base` is faster, `medium` is more accurate (French in particular), about 2-3x slower on CPU |
 | `WHISPER_DEVICE` | `cpu`                    | `cuda` if you have a GPU                  |
 | `WHISPER_COMPUTE`| `int8`                   | `float16` on GPU                          |
 | `OLLAMA_MODEL`   | `qwen2.5:3b`             | any Qwen model you have pulled            |
 | `OLLAMA_URL`     | `http://localhost:11434` |                                           |
 | `DEBUG_FACES`    | unset                    | `true` writes face/crop diagnostics per clip |
+
+## Trying a larger Whisper model
+
+```bash
+WHISPER_MODEL=medium python app/main.py          # macOS / Linux
+```
+```powershell
+$env:WHISPER_MODEL = "medium"; python app\main.py   # Windows PowerShell
+```
+The first run downloads the model (about 1.5 GB for `medium`). The console
+prints the model, detected language and transcription time; the page shows
+the same in the status line when the job is done. Compare
+`output/<job_id>/transcript.json` between runs.
 
 ## Layout
 

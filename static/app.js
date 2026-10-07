@@ -42,7 +42,7 @@ async function poll(jobId) {
 
     if (job.stage === "done") {
       statusBox.classList.add("done");
-      if (job.ranking_note) statusDetail.textContent = job.ranking_note;
+      statusDetail.textContent = [job.transcription_note, job.ranking_note].filter(Boolean).join(" · ");
       renderClips(job.clips);
       button.disabled = false;
       return;

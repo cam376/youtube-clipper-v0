@@ -46,6 +46,10 @@ def run_job(job: dict, url: str, job_dir: Path, public_prefix: str) -> None:
         audio = extract_audio(source, job_dir / "audio.wav")
         transcript = transcribe(audio)
         (job_dir / "transcript.json").write_text(json.dumps(transcript, indent=1), encoding="utf-8")
+        job["transcription_note"] = (
+            f"transcribed with whisper {transcript.get('model', '?')} "
+            f"(language {transcript.get('language', '?')}, {transcript.get('duration_seconds', 0):.0f} s)"
+        )
         if not transcript["segments"]:
             raise RuntimeError("No speech was detected in this video.")
 

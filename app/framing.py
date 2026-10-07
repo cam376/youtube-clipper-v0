@@ -44,6 +44,12 @@ PERSISTENT_COVERAGE = 0.40  # fraction of samples a track must be present in
 SINGLE_MIN_COVERAGE = 0.30
 DOMINANCE_RATIO = 0.5       # 2nd face weaker than this * 1st -> single person
 MIN_SEPARATION_FRAC = 0.15  # two faces must be this far apart horizontally
+# A face that is detected less often (it turns away, profile view) still
+# counts as persistent when its detections span most of the clip: the person
+# is in their seat the whole time, the detector just misses them at times.
+SPAN_COVERAGE = 0.25        # minimum coverage for the span rule
+SPAN_FRAC = 0.70            # first-to-last detection must cover this much of the clip
+MERGE_DIST_FACES = 1.0      # fragments of one person: same place within 1 face-width
 
 SMOOTH_SECONDS = 1.5        # moving-average half-window
 DEADZONE_FRAC = 0.06        # ignore moves smaller than 6 % of crop size
@@ -75,6 +81,29 @@ class Track:
     def center_x(self) -> float:
         x, _, w, _ = self.median_box()
         return x + w / 2
+
+    def span(self, n_samples: int) -> float:
+        """Fraction of the clip between the first and last detection."""
+        if not self.boxes or n_samples <= 1:
+            return 0.0
+        return (max(self.boxes) - min(self.boxes) + 1) / n_samples
+
+    def longest_gap(self, sample_fps: float) -> float:
+        """Longest run of samples without a detection, in seconds."""
+        idxs = sorted(self.boxes)
+        if len(idxs) < 2:
+            return 0.0
+        return max(b - a - 1 for a, b in zip(idxs, idxs[1:])) / sample_fps
+
+    def metrics(self, n_samples: int, sample_fps: float) -> dict:
+        return {
+            "id": self.id,
+            "coverage": round(self.coverage(n_samples), 3),
+            "span": round(self.span(n_samples), 3),
+            "longest_gap_s": round(self.longest_gap(sample_fps), 1),
+            "fragments": getattr(self, "fragments", 1),
+            "median_box": [round(float(v), 1) for v in self.median_box()],
+        }
 
 
 @dataclass
@@ -211,6 +240,35 @@ def _link_tracks(per_sample: list[list[tuple]], scale: float) -> list[Track]:
     return tracks
 
 
+def _merge_fragments(tracks: list[Track]) -> list[Track]:
+    """
+    A person whose track died (no detection for > MAX_GAP_SECONDS) comes back
+    as a new track id. Merge tracks that never overlap in time and sit at the
+    same place, so coverage is computed per person, not per fragment.
+    """
+    merged: list[Track] = []
+    for tr in sorted(tracks, key=lambda t: min(t.boxes)):
+        x, y, w, h = tr.median_box()
+        cx, cy = x + w / 2, y + h / 2
+        target = None
+        for m in merged:
+            if set(m.boxes) & set(tr.boxes):
+                continue
+            mx, my, mw, mh = m.median_box()
+            dist = np.hypot(cx - (mx + mw / 2), cy - (my + mh / 2)) / max(w, mw)
+            if dist <= MERGE_DIST_FACES:
+                target = m
+                break
+        if target is None:
+            tr.fragments = 1
+            merged.append(tr)
+        else:
+            target.boxes.update(tr.boxes)
+            target.last_idx = max(target.last_idx, tr.last_idx)
+            target.fragments = getattr(target, "fragments", 1) + 1
+    return merged
+
+
 def analyze_clip(source: Path, start: float, end: float) -> FaceAnalysis:
     width, height = _probe_size(source)
     det_w = min(DETECT_WIDTH, width)
@@ -222,7 +280,7 @@ def analyze_clip(source: Path, start: float, end: float) -> FaceAnalysis:
     frames = _sample_frames(source, start, end, det_w, det_h)
     detector = _Detector(det_w, det_h)
     per_sample = [detector.detect(f) for f in frames]
-    tracks = _link_tracks(per_sample, scale)
+    tracks = _merge_fragments(_link_tracks(per_sample, scale))
     return FaceAnalysis(width, height, SAMPLE_FPS, len(frames), tracks, frames, scale, detector.name)
 
 
@@ -325,31 +383,74 @@ def _half_region(a: FaceAnalysis, tr: Track) -> Region:
     return Region(crop_w, crop_h, _keyframes(xs), _keyframes(ys), tr.id)
 
 
+def _is_persistent(t: Track, n: int) -> bool:
+    cov, span = t.coverage(n), t.span(n)
+    return cov >= PERSISTENT_COVERAGE or (cov >= SPAN_COVERAGE and span >= SPAN_FRAC)
+
+
+def classification_metrics(a: FaceAnalysis) -> dict:
+    """Everything the layout decision looks at, for the debug output."""
+    n = a.n_samples
+    ranked = sorted(a.tracks, key=lambda t: t.coverage(n), reverse=True)
+    m = {
+        "samples": n,
+        "sample_fps": a.sample_fps,
+        "clip_seconds": round(n / a.sample_fps, 1) if a.sample_fps else 0,
+        "tracks": [t.metrics(n, a.sample_fps) for t in ranked],
+        "thresholds": {
+            "persistent_coverage": PERSISTENT_COVERAGE,
+            "span_coverage": SPAN_COVERAGE,
+            "span_frac": SPAN_FRAC,
+            "single_min_coverage": SINGLE_MIN_COVERAGE,
+            "dominance_ratio": DOMINANCE_RATIO,
+            "min_separation_frac": MIN_SEPARATION_FRAC,
+        },
+    }
+    if len(ranked) >= 2:
+        first, second = ranked[0], ranked[1]
+        c1, c2 = first.coverage(n), second.coverage(n)
+        m["separation"] = round(abs(first.center_x() - second.center_x()) / a.width, 3)
+        m["strength_ratio"] = round(c2 / c1, 3) if c1 else 0.0
+        m["second_span"] = round(second.span(n), 3)
+        m["second_longest_gap_s"] = round(second.longest_gap(a.sample_fps), 1)
+    return m
+
+
 def plan_layout(a: FaceAnalysis) -> FramePlan:
     if a.n_samples == 0 or not a.tracks:
         return FramePlan(LAYOUT_CENTER, [], "no frames or no faces detected")
 
-    ranked = sorted(a.tracks, key=lambda t: t.coverage(a.n_samples), reverse=True)
-    cov = [t.coverage(a.n_samples) for t in ranked]
-    persistent = [t for t, c in zip(ranked, cov) if c >= PERSISTENT_COVERAGE]
+    n = a.n_samples
+    ranked = sorted(a.tracks, key=lambda t: t.coverage(n), reverse=True)
+    cov = [t.coverage(n) for t in ranked]
+    persistent = [t for t in ranked if _is_persistent(t, n)]
 
     if len(persistent) >= 2:
         first, second = persistent[0], persistent[1]
-        c1, c2 = cov[0], cov[1]
+        c1, c2 = first.coverage(n), second.coverage(n)
         sep = abs(first.center_x() - second.center_x()) / a.width
-        dominated = c2 < DOMINANCE_RATIO * c1
+        span2 = second.span(n)
+        # A second face that is in frame for most of the clip is a second
+        # person even if the detector sees it less often than the first.
+        dominated = c2 < DOMINANCE_RATIO * c1 and span2 < SPAN_FRAC
+        stats = (f"coverage {c1:.0%} / {c2:.0%}, ratio {c2 / c1:.2f}, span {span2:.0%}, "
+                 f"gap {second.longest_gap(a.sample_fps):.0f}s, separation {sep:.0%}, samples {n}")
         if sep >= MIN_SEPARATION_FRAC and not dominated:
             left, right = sorted((first, second), key=lambda t: t.center_x())
-            note = f"two persistent faces (coverage {c1:.0%} / {c2:.0%}, separation {sep:.0%})"
-            return FramePlan(LAYOUT_SPLIT, [_half_region(a, left), _half_region(a, right)], note)
-        note = f"second face dominated or too close (coverage {c1:.0%} / {c2:.0%}, separation {sep:.0%})"
-        return FramePlan(LAYOUT_SINGLE, [_single_region(a, first)], note)
+            return FramePlan(LAYOUT_SPLIT, [_half_region(a, left), _half_region(a, right)],
+                             f"two persistent faces ({stats})")
+        reason = "too close" if sep < MIN_SEPARATION_FRAC else "second face dominated"
+        return FramePlan(LAYOUT_SINGLE, [_single_region(a, first)], f"{reason} ({stats})")
 
     if cov[0] >= SINGLE_MIN_COVERAGE:
+        extra = ""
+        if len(ranked) >= 2:
+            extra = (f", second face coverage {cov[1]:.0%} span {ranked[1].span(n):.0%} "
+                     f"separation {abs(ranked[0].center_x() - ranked[1].center_x()) / a.width:.0%}")
         return FramePlan(LAYOUT_SINGLE, [_single_region(a, ranked[0])],
-                         f"one face (coverage {cov[0]:.0%})")
+                         f"one persistent face (coverage {cov[0]:.0%}, samples {n}{extra})")
 
-    return FramePlan(LAYOUT_CENTER, [], f"faces too sporadic (best coverage {cov[0]:.0%})")
+    return FramePlan(LAYOUT_CENTER, [], f"faces too sporadic (best coverage {cov[0]:.0%}, samples {n})")
 
 
 # --------------------------------------------------------------------------- #
@@ -453,10 +554,7 @@ def save_debug_sheet(a: FaceAnalysis, plan: FramePlan, out_path: Path, max_tiles
         "note": plan.note,
         "detector": a.detector_name,
         "samples": a.n_samples,
-        "tracks": [
-            {"id": t.id, "coverage": round(t.coverage(a.n_samples), 3), "median_box": [round(v, 1) for v in t.median_box()]}
-            for t in a.tracks
-        ],
+        "classification": classification_metrics(a),
         "regions": [
             {"track": r.track_id, "w": r.w, "h": r.h, "x_keys": r.x_keys, "y_keys": r.y_keys}
             for r in plan.regions

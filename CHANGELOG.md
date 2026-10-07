@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.2.2 — 2026-10-07 — two-person robustness, Whisper model switch
+
+- Framing: a second face is now "persistent" when it is detected in >= 25 % of
+  samples AND its detections span >= 70 % of the clip, in addition to the old
+  >= 40 % coverage rule. The dominance rule (second face < 0.5 x first) no
+  longer applies to a face that spans the clip. Track fragments of one person
+  (same seat, never overlapping in time) are merged before classification.
+  Thresholds for solo videos, the centre-crop fallback, crop smoothing and
+  the split-screen layout are unchanged.
+- Debug output (`DEBUG_FACES=true`) now records per track coverage, span,
+  longest gap and fragment count, plus separation, strength ratio, sample
+  count and all thresholds under `classification` in `clip_N_faces.json`.
+  The same numbers appear in each clip's `layout_note`.
+- Whisper: `WHISPER_MODEL` is read when a transcription starts (set it before
+  launching the server); the model is reloaded if it changes. The server logs
+  model, detected language, language probability and transcription duration,
+  and the page shows them in the status line at the end.
+- New tests: `tests/test_framing_classification.py`.
+
 ## v0.2.1 — 2026-10-07 — FFmpeg 9 compatibility
 
 - Face-framed clips are rendered with `-/filter_complex FILE` on FFmpeg 7+

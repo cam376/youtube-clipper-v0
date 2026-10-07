@@ -109,9 +109,20 @@ folder when you no longer need it; nothing else is stored.
 Set environment variables in the same PowerShell window before `python app\main.py`:
 
 ```powershell
-$env:WHISPER_MODEL = "base"      # faster, less accurate transcription (default: small)
+$env:WHISPER_MODEL = "medium"    # more accurate captions, especially French; 2-3x slower (default: small)
+$env:WHISPER_MODEL = "base"      # faster, less accurate transcription
 $env:OLLAMA_MODEL  = "qwen2.5:7b" # better ranking if you have the RAM (default: qwen2.5:3b)
 ```
+
+To A/B the captions on one video:
+```powershell
+$env:WHISPER_MODEL = "medium"
+python app\main.py
+```
+Run the same URL, then compare `output\<job_id>\transcript.json` with the
+`small` run. The console line `transcribed ... with medium (language=fr ...)`
+confirms which model ran; the page shows it in the status line at the end.
+`medium` downloads about 1.5 GB on first use and needs about 3 GB of RAM.
 
 NVIDIA GPU for Whisper:
 ```powershell
