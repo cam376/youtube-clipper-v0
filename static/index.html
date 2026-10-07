@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YouTube Clipper</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="container">
+    <h1>Turn YouTube videos into Shorts</h1>
+    <p class="hint">Only use videos you own or have permission to process.</p>
+
+    <form id="form">
+      <input id="url" type="url" placeholder="https://youtube.com/watch?v=..." required autofocus>
+      <button id="generate" type="submit">Generate Clips</button>
+    </form>
+
+    <section id="status" class="status hidden">
+      <span class="spinner"></span>
+      <span id="status-text"></span>
+      <span id="status-detail" class="detail"></span>
+    </section>
+
+    <section id="error" class="error hidden"></section>
+
+    <section id="clips" class="clips"></section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

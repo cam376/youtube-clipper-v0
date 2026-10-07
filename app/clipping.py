@@ -1,0 +1,85 @@
+"""
+The end-to-end pipeline:
+    YouTube URL -> source video -> audio -> transcript -> candidates -> ranking
+    -> cut / crop / subtitle / export -> list of MP4 files.
+
+`run_job` mutates `job` (a plain dict) so the web layer can report status.
+"""
+
+import json
+import traceback
+from pathlib import Path
+
+from youtube import download_youtube_video
+from transcription import extract_audio, transcribe
+from ranking import build_candidates, rank_candidates, select_best
+from video import build_subtitles, render_clip
+
+STAGES = {
+    "importing": "Importing video...",
+    "transcribing": "Transcribing...",
+    "ranking": "Finding best moments...",
+    "clipping": "Creating clips...",
+    "done": "Done.",
+    "error": "Error.",
+}
+
+
+def _set(job: dict, stage: str, detail: str = "") -> None:
+    job["stage"] = stage
+    job["status"] = STAGES[stage]
+    job["detail"] = detail
+
+
+def run_job(job: dict, url: str, job_dir: Path, public_prefix: str) -> None:
+    """Run the whole pipeline for one URL. Errors are stored on the job."""
+    try:
+        job_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Source video
+        _set(job, "importing")
+        source = download_youtube_video(url, job_dir)
+
+        # 2-3. Audio + transcript
+        _set(job, "transcribing")
+        audio = extract_audio(source, job_dir / "audio.wav")
+        transcript = transcribe(audio)
+        (job_dir / "transcript.json").write_text(json.dumps(transcript, indent=1), encoding="utf-8")
+        if not transcript["segments"]:
+            raise RuntimeError("No speech was detected in this video.")
+
+        # 4-5. Candidates + ranking + selection
+        _set(job, "ranking")
+        cands = build_candidates(transcript["segments"])
+        if not cands:
+            raise RuntimeError("The video is too short to produce 20-60 s clips.")
+        ranked, note = rank_candidates(cands)
+        chosen = select_best(ranked)
+        job["ranking_note"] = note
+        (job_dir / "selection.json").write_text(json.dumps(chosen, indent=1), encoding="utf-8")
+
+        # 6-9. Cut, crop, subtitle, export
+        _set(job, "clipping")
+        clips = []
+        for i, c in enumerate(chosen, start=1):
+            _set(job, "clipping", f"clip {i}/{len(chosen)}")
+            ass = build_subtitles(transcript["words"], c["start"], c["end"], job_dir / f"clip_{i}.ass")
+            out = render_clip(source, c["start"], c["end"], ass, job_dir / f"clip_{i}.mp4")
+            clips.append({
+                "index": i,
+                "start": c["start"],
+                "end": c["end"],
+                "duration": round(c["end"] - c["start"], 1),
+                "score": c.get("score"),
+                "text": c["text"],
+                "url": f"{public_prefix}/{out.name}",
+                "filename": out.name,
+            })
+        job["clips"] = clips
+
+        # 10. Done
+        _set(job, "done")
+    except Exception as exc:  # noqa: BLE001
+        job["error"] = f"{exc.__class__.__name__}: {exc}"
+        job["traceback"] = traceback.format_exc()
+        _set(job, "error", job["error"])
