@@ -39,7 +39,14 @@ def main(argv: list[str]) -> int:
     fps = 2.0
     target, smooth = d["target_crop_x"], d["smoothed_crop_x"]
     right_limit = d.get("source_width", 0) - crop_w if d.get("source_width") else None
-    print(f"{'t':>6} {'target_x':>9} {'smooth_x':>9} {'face@crop':>9}  flags")
+    source = d.get("position_source") or ["primary"] * len(target)
+    other = d.get("other_visible") or {}
+    for h in d.get("handoff_tracks") or []:
+        print(f"handoff track #{h['track']}: {h['samples']} samples, median x {h['median_x']}, face h {h['face_h']} "
+              f"({h['size_ratio']}x primary), co-presence {h['copresence']:.0%}")
+    for r in d.get("handoff_rejected") or []:
+        print(f"not followed #{r['track']}: {r['samples']} samples, median x {r['median_x']}, face h {r['face_h']} -> {r['reason']}")
+    print(f"{'t':>6} {'target_x':>9} {'smooth_x':>9} {'face@crop':>9}  source         flags")
     for i, (tx, sx) in enumerate(zip(target, smooth)):
         t = i / fps
         face_cx = tx + crop_w / 2          # target is the clamped face centre minus half width
@@ -51,9 +58,13 @@ def main(argv: list[str]) -> int:
             flags.append("CLAMPED-RIGHT")
         if abs(pos - 0.5) > 0.15:
             flags.append("OFF-CENTRE")
-        if i % 2 == 0 or flags:
-            print(f"{t:6.1f} {tx:9.1f} {sx:9.1f} {pos:8.0%}   {' '.join(flags)}")
-    print(f"keyframes rendered: {len(region['x_keys'])}  x range {d['crop_x_min']}-{d['crop_x_max']}")
+        src = source[i] if i < len(source) else "?"
+        if src == "interpolated" and str(i) in other:
+            flags.append("PRIMARY ABSENT, visible " + other[str(i)])
+        if i % 2 == 0 or flags or src != "primary":
+            print(f"{t:6.1f} {tx:9.1f} {sx:9.1f} {pos:8.0%}   {src:<14} {' '.join(flags)}")
+    print(f"keyframes rendered: {len(region['x_keys'])}  x range {d['crop_x_min']}-{d['crop_x_max']}  "
+          f"handoff boundaries at samples {d.get('handoff_boundaries', [])}")
     return 0
 
 

@@ -51,6 +51,14 @@ SPAN_COVERAGE = 0.25        # minimum coverage for the span rule
 SPAN_FRAC = 0.70            # first-to-last detection must cover this much of the clip
 MERGE_DIST_FACES = 1.0      # fragments of one person: same place within 1 face-width
 
+# SINGLE_PERSON handoff: when the primary track is absent, follow another
+# track that is visible instead of holding the primary's position, provided
+# that track is temporally complementary (not a co-present second person)
+# and has a plausible face size (not a logo or a tiny face in a graphic).
+HANDOFF_MAX_COPRESENCE = 0.2   # fraction of the candidate's samples that overlap the primary
+HANDOFF_SIZE_RANGE = (0.5, 2.0)  # candidate face height relative to the primary's
+HANDOFF_MIN_SAMPLES = 4        # 2 s of detections before a track can be followed
+
 SMOOTH_SECONDS = 1.5        # moving-average half-window
 DEADZONE_FRAC = 0.06        # ignore moves smaller than 6 % of crop size
 GLIDE_SECONDS = 1.0         # ramp length after a dead-zone step
@@ -356,13 +364,106 @@ def _even(v: float) -> int:
     return int(round(v / 2)) * 2
 
 
-def _single_region(a: FaceAnalysis, tr: Track) -> tuple[Region, dict]:
+def _handoff_candidates(a: FaceAnalysis, primary: Track, others: list[Track]) -> tuple[list[Track], list[dict], list[dict]]:
     """
-    9:16 crop that follows the primary face horizontally. Returns the region
-    and a diagnostics dict that makes the decision auditable in job.json:
-    the raw per-sample target (face centre - crop_w/2, clamped), the final
-    smoothed crop x per sample, how many samples had no detection (held or
-    interpolated from the track), and the geometric-centre x it did NOT use.
+    Other tracks that may stand in for the primary while it is absent.
+    Returns (accepted tracks, accepted infos, rejected infos with reasons).
+    """
+    p_idx = set(primary.boxes)
+    p_h = primary.median_box()[3]
+    accepted, acc_info, rej_info = [], [], []
+    for t in others:
+        idx = set(t.boxes)
+        h = t.median_box()[3]
+        info = {"track": t.id, "samples": len(idx), "median_x": round(float(t.center_x()), 1),
+                "face_h": round(float(h), 1), "size_ratio": round(float(h / p_h), 2) if p_h else None,
+                "copresence": round(len(idx & p_idx) / len(idx), 3) if idx else 1.0}
+        if len(idx) < HANDOFF_MIN_SAMPLES:
+            info["reason"] = f"fewer than {HANDOFF_MIN_SAMPLES} samples"
+        elif info["copresence"] > HANDOFF_MAX_COPRESENCE:
+            info["reason"] = "co-present with the primary (another person)"
+        elif not (HANDOFF_SIZE_RANGE[0] <= info["size_ratio"] <= HANDOFF_SIZE_RANGE[1]):
+            info["reason"] = f"face size {info['size_ratio']}x the primary (outside {HANDOFF_SIZE_RANGE})"
+        else:
+            accepted.append(t)
+            acc_info.append(info)
+            continue
+        rej_info.append(info)
+    order = sorted(range(len(accepted)), key=lambda k: -accepted[k].median_box()[3])
+    return [accepted[k] for k in order], [acc_info[k] for k in order], rej_info
+
+
+def _centre_series_with_handoff(primary: Track, handoffs: list[Track], n: int, axis: str):
+    """
+    Per-sample face centre: the primary where it is detected, else the
+    largest accepted handoff track detected at that sample, else linear
+    interpolation. Also returns the origin of every sample.
+    """
+    known: dict[int, tuple[float, str]] = {}
+    for i, (x, y, w, h) in primary.boxes.items():
+        known[i] = (x + w / 2 if axis == "x" else y + h / 2, "primary")
+    for t in handoffs:
+        for i, (x, y, w, h) in t.boxes.items():
+            if i not in known:
+                known[i] = (x + w / 2 if axis == "x" else y + h / 2, f"handoff:{t.id}")
+    idxs = np.array(sorted(known))
+    vals = np.array([known[i][0] for i in idxs], dtype=float)
+    series = np.interp(np.arange(n), idxs, vals)
+    source = ["interpolated"] * n
+    for i in known:
+        source[i] = known[i][1]
+    return series, source
+
+
+def _origin_boundaries(source: list[str]) -> list[int]:
+    """Sample indexes where the followed track changes (primary <-> handoff, handoff <-> handoff)."""
+    boundaries = []
+    last = None
+    for i, s in enumerate(source):
+        if s == "interpolated":
+            continue
+        if last is not None and s != last:
+            boundaries.append(i)
+        last = s
+    return boundaries
+
+
+def _smooth_segmented(centres: np.ndarray, size: float, limit: float, boundaries: list[int]) -> np.ndarray:
+    """
+    The usual smoothing, applied independently on each side of a handoff so
+    the crop steps at a source cut instead of panning across it. With no
+    boundaries this is exactly _smooth_position.
+    """
+    if not boundaries:
+        return _smooth_position(centres, size, limit)
+    out = np.empty_like(centres)
+    edges = [0] + sorted(boundaries) + [len(centres)]
+    for s, e in zip(edges[:-1], edges[1:]):
+        if e > s:
+            out[s:e] = _smooth_position(centres[s:e], size, limit)
+    return out
+
+
+def _keyframes_with_steps(values: np.ndarray, boundaries: list[int]) -> list[tuple[float, float]]:
+    """_keyframes plus an instantaneous step at each handoff boundary."""
+    keys = _keyframes(values)
+    for b in boundaries:
+        if 0 < b < len(values):
+            t = b / SAMPLE_FPS
+            keys.append((round(t - 0.02, 3), float(round(values[b - 1], 1))))
+            keys.append((t, float(round(values[b], 1))))
+    keys = sorted(set(keys))
+    return keys
+
+
+def _single_region(a: FaceAnalysis, tr: Track, others: list[Track] | None = None) -> tuple[Region, dict]:
+    """
+    9:16 crop that follows the primary face horizontally, handing off to a
+    credible other track while the primary is absent (see _handoff_candidates).
+    Returns the region and a diagnostics dict that makes the decision
+    auditable in job.json: the raw per-sample target (face centre - crop_w/2,
+    clamped), the final smoothed crop x per sample, where each sample's
+    position came from, and the geometric-centre x it did NOT use.
     """
     W, H = a.width, a.height
     n = a.n_samples
@@ -371,14 +472,28 @@ def _single_region(a: FaceAnalysis, tr: Track) -> tuple[Region, dict]:
     if crop_w > W:
         crop_w = _even(W)
         crop_h = _even(W * 16 / 9)
-    centres = _fill_series(tr, n, "x")
+    handoffs, handoff_info, rejected_info = _handoff_candidates(a, tr, others or [])
+    centres, source = _centre_series_with_handoff(tr, handoffs, n, "x")
+    boundaries = _origin_boundaries(source)
     target = np.clip(centres - crop_w / 2, 0, max(W - crop_w, 0))
-    xs = _smooth_position(centres, crop_w, W)
+    xs = _smooth_segmented(centres, crop_w, W, boundaries)
+    # other faces visible while the primary is absent but NOT followed (rejected candidates)
+    rejected_ids = {r["track"] for r in rejected_info}
+    other_visible: dict[str, str] = {}
+    for t in others or []:
+        if t.id not in rejected_ids:
+            continue
+        reason = next(r["reason"] for r in rejected_info if r["track"] == t.id)
+        for i, (x, y, w, h) in t.boxes.items():
+            if i not in tr.boxes:
+                other_visible[str(i)] = f"#{t.id} x={x + w / 2:.0f} h={h:.0f} not followed: {reason}"
     cy = float(np.median(_fill_series(tr, n, "y")))
     y = float(np.clip(cy - crop_h * 0.4, 0, max(H - crop_h, 0)))
     mx, _, mw, _ = tr.median_box()
     geometric_x = round((W - crop_w) / 2, 1)
     right_limit = max(W - crop_w, 0)
+    handoff_samples = sum(1 for s in source if s.startswith("handoff:"))
+    interpolated_samples = sum(1 for s in source if s == "interpolated")
     # Samples where the face is so close to a source edge that the crop
     # cannot centre it (nothing to the left/right of the frame to show).
     clamped_left = int(np.sum(centres - crop_w / 2 < 0))
@@ -397,7 +512,14 @@ def _single_region(a: FaceAnalysis, tr: Track) -> tuple[Region, dict]:
         "geometric_centre_x": geometric_x,
         "geometric_centre_used": False,
         "detected_samples": len(tr.boxes),
-        "fallback_samples": n - len(tr.boxes),          # held / interpolated from the track
+        "fallback_samples": n - len(tr.boxes),          # samples without a primary detection
+        "handoff_samples": handoff_samples,              # ... of which followed another credible track
+        "interpolated_samples": interpolated_samples,    # ... of which held / interpolated
+        "handoff_tracks": handoff_info,
+        "handoff_rejected": rejected_info,
+        "handoff_boundaries": boundaries,
+        "position_source": source,
+        "other_visible": other_visible,
         "clamped_left_samples": clamped_left,
         "clamped_right_samples": clamped_right,
         "face_in_crop_min": round(float(face_pos.min()), 3),
@@ -408,7 +530,7 @@ def _single_region(a: FaceAnalysis, tr: Track) -> tuple[Region, dict]:
         "crop_x_min": round(float(xs.min()), 1),
         "crop_x_max": round(float(xs.max()), 1),
     }
-    return Region(crop_w, crop_h, _keyframes(xs), [(0.0, round(y, 1))], tr.id), diag
+    return Region(crop_w, crop_h, _keyframes_with_steps(xs, boundaries), [(0.0, round(y, 1))], tr.id), diag
 
 
 def _primary_track(a: FaceAnalysis, candidates: list[Track]) -> Track:
@@ -497,7 +619,7 @@ def plan_layout(a: FaceAnalysis) -> FramePlan:
                              f"two persistent faces ({stats})")
         reason = "too close" if sep < MIN_SEPARATION_FRAC else "second face dominated"
         primary = _primary_track(a, persistent)
-        region, diag = _single_region(a, primary)
+        region, diag = _single_region(a, primary, [t for t in a.tracks if t is not primary])
         return FramePlan(LAYOUT_SINGLE, [region], f"{reason} ({stats}); {_single_note(diag)}", diag)
 
     if cov[0] >= SINGLE_MIN_COVERAGE:
@@ -506,7 +628,7 @@ def plan_layout(a: FaceAnalysis) -> FramePlan:
             extra = (f", second face coverage {cov[1]:.0%} span {ranked[1].span(n):.0%} "
                      f"separation {abs(ranked[0].center_x() - ranked[1].center_x()) / a.width:.0%}")
         primary = _primary_track(a, ranked)
-        region, diag = _single_region(a, primary)
+        region, diag = _single_region(a, primary, [t for t in a.tracks if t is not primary])
         return FramePlan(LAYOUT_SINGLE, [region],
                          f"one persistent face (coverage {cov[0]:.0%}, samples {n}{extra}); {_single_note(diag)}", diag)
 
@@ -519,11 +641,17 @@ def _single_note(d: dict) -> str:
     if d.get("clamped_left_samples") or d.get("clamped_right_samples"):
         clamp = (f", crop clamped at source edge for {d['clamped_left_samples']} left / "
                  f"{d['clamped_right_samples']} right samples")
+    handoff = ""
+    if d.get("handoff_tracks"):
+        handoff = ", handoff to " + " / ".join(f"#{h['track']} ({h['samples']} samples, x {h['median_x']:.0f})"
+                                               for h in d["handoff_tracks"])
     return (f"primary track #{d['primary_track']} coverage {d['coverage']:.0%} span {d['span']:.0%}, "
             f"median face x {d['median_face_x']:.0f}, crop x {d['crop_x_min']:.0f}-{d['crop_x_max']:.0f} "
             f"(geometric centre would be {d['geometric_centre_x']:.0f}), face at "
             f"{d['face_in_crop_min']:.0%}-{d['face_in_crop_max']:.0%} of crop width (median {d['face_in_crop_median']:.0%}), "
-            f"{d['fallback_samples']} of {d['detected_samples'] + d['fallback_samples']} samples held/interpolated{clamp}")
+            f"{d['fallback_samples']} of {d['detected_samples'] + d['fallback_samples']} samples without primary "
+            f"({d.get('handoff_samples', 0)} followed another track, {d.get('interpolated_samples', d['fallback_samples'])} "
+            f"held/interpolated){handoff}{clamp}")
 
 
 # --------------------------------------------------------------------------- #
@@ -605,6 +733,7 @@ def save_debug_sheet(a: FaceAnalysis, plan: FramePlan, out_path: Path, max_tiles
             cv2.rectangle(img, (int(gx * inv), 0), (int((gx + _even(a.height * 9 / 16)) * inv), img.shape[0] - 1), (128, 128, 128), 1)
             cv2.putText(img, "GEOMETRIC CENTRE", (int(gx * inv) + 4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
         primary_ids = {r.track_id for r in plan.regions}
+        handoff_ids = {h["track"] for h in plan.diagnostics.get("handoff_tracks", [])}
         for tr in a.tracks:
             if i not in tr.boxes:
                 continue
@@ -612,8 +741,9 @@ def save_debug_sheet(a: FaceAnalysis, plan: FramePlan, out_path: Path, max_tiles
             col = colors[tr.id % len(colors)]
             p1 = (int(x * inv), int(y * inv))
             p2 = (int((x + w) * inv), int((y + h) * inv))
-            cv2.rectangle(img, p1, p2, col, 3 if tr.id in primary_ids else 1)
-            tag = f"#{tr.id} {tr.coverage(a.n_samples):.0%}" + (" PRIMARY" if tr.id in primary_ids else "")
+            cv2.rectangle(img, p1, p2, col, 3 if tr.id in primary_ids or tr.id in handoff_ids else 1)
+            tag = f"#{tr.id} {tr.coverage(a.n_samples):.0%}" + (
+                " PRIMARY" if tr.id in primary_ids else " HANDOFF" if tr.id in handoff_ids else "")
             cv2.putText(img, tag, (p1[0], max(p1[1] - 4, 12)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, col, 1, cv2.LINE_AA)
         cv2.putText(img, f"t={t:.1f}s", (6, img.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)

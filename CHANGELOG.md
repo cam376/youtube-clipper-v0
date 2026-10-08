@@ -45,6 +45,17 @@ caption timing source and output resolution are unchanged.
 - Tests: `tests/test_single_person_framing.py` (right-side speaker, dropout,
   leading gap, primary-track choice, rendered output face position within
   420-660 px of the 1080 px output with the mean within 60 px of centre).
+- Face-centred handoff (pilot clip dd896a4c174f): a source edit that moves
+  the speaker by more than one face width starts a new track, and the
+  fragment merge only joins tracks at the same place, so the primary track's
+  position was held across the opening 9 s while the speaker was visible as
+  another track. SINGLE_PERSON plans now follow another track while the
+  primary is absent when that track overlaps the primary in at most 20 % of
+  its samples, has a face height between 0.5x and 2x the primary's, and has
+  at least 4 samples (2 s). Smoothing runs separately on each side of a
+  handoff so the crop steps at the cut instead of panning across it.
+  Diagnostics record the followed/rejected tracks, per-sample position
+  source and visible-but-not-followed faces; `framing_report.py` prints them.
 - `app/framing_report.py` prints a clip's per-sample framing diagnostics;
   diagnostics now include the face position inside the crop and the number
   of samples where the crop was clamped at a source edge.

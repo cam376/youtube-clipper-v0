@@ -115,6 +115,69 @@ class PlanLevelTest(unittest.TestCase):
         self.assertEqual(plan.layout, LAYOUT_SINGLE, plan.note)
         self.assertEqual(plan.diagnostics["primary_track"], 0)
 
+    # ---------------------------------------------------------------- handoff
+    def _two_fragments(self, n=80, cut=20, xa=400.0, xb=1000.0, size_a=90.0, size_b=90.0):
+        a = _track(1, xa, list(range(cut)), size=size_a)          # first section
+        b = _track(0, xb, list(range(cut, n)), size=size_b)       # remainder (primary: longer)
+        return _analysis([b, a], n)
+
+    def test_handoff_follows_visible_face_before_the_cut(self):
+        n, cut = 80, 20                                            # 40 s clip, edit at 10 s
+        plan = plan_layout(self._two_fragments(n, cut))
+        self.assertEqual(plan.layout, LAYOUT_SINGLE, plan.note)
+        d = plan.diagnostics
+        self.assertEqual(d["primary_track"], 0)
+        self.assertEqual([h["track"] for h in d["handoff_tracks"]], [1])
+        self.assertEqual(d["handoff_samples"], cut)
+        self.assertEqual(d["interpolated_samples"], 0)
+        self.assertEqual(d["handoff_boundaries"], [cut])
+        for i in range(cut):
+            self.assertAlmostEqual(d["smoothed_crop_x"][i], 400 - CROP_W / 2, delta=3, msg=f"sample {i}")
+            self.assertEqual(d["position_source"][i], "handoff:1")
+        for i in range(cut, n):
+            self.assertAlmostEqual(d["smoothed_crop_x"][i], 1000 - CROP_W / 2, delta=3, msg=f"sample {i}")
+            self.assertEqual(d["position_source"][i], "primary")
+        # the crop steps at the cut instead of panning across it
+        keys = dict(plan.regions[0].x_keys)
+        self.assertAlmostEqual(keys[round(cut / framing.SAMPLE_FPS - 0.02, 3)], 400 - CROP_W / 2, delta=3)
+        self.assertAlmostEqual(keys[cut / framing.SAMPLE_FPS], 1000 - CROP_W / 2, delta=3)
+        self.assertIn("handoff to #1", plan.note)
+
+    def test_handoff_rejects_copresent_second_person(self):
+        n = 80
+        primary = _track(0, 1000, list(range(n)), size=90.0)
+        other = _track(1, 400, list(range(10, 40)), size=90.0)     # fully co-present, 37 % (not a second persistent face)
+        plan = plan_layout(_analysis([primary, other], n))
+        self.assertEqual(plan.layout, LAYOUT_SINGLE, plan.note)
+        d = plan.diagnostics
+        self.assertEqual(d["handoff_tracks"], [])
+        self.assertIn("co-present", d["handoff_rejected"][0]["reason"])
+        self.assertTrue(all(abs(x - (1000 - CROP_W / 2)) < 3 for x in d["smoothed_crop_x"]))
+
+    def test_handoff_rejects_tiny_face_and_too_short_tracks(self):
+        n, cut = 80, 20
+        primary = _track(0, 1000, list(range(cut, n)), size=120.0)
+        logo = _track(1, 400, list(range(cut)), size=24.0)         # 0.2x the primary
+        blip = _track(2, 600, [3, 4, 5], size=120.0)               # 3 samples
+        plan = plan_layout(_analysis([primary, logo, blip], n))
+        d = plan.diagnostics
+        self.assertEqual(d["handoff_tracks"], [])
+        reasons = {r["track"]: r["reason"] for r in d["handoff_rejected"]}
+        self.assertIn("face size", reasons[1])
+        self.assertIn("fewer than", reasons[2])
+        self.assertEqual(d["handoff_samples"], 0)
+        self.assertEqual(d["interpolated_samples"], cut)
+        self.assertIn("#1", d["other_visible"]["0"])                # visible but not followed, reported
+        for i in range(cut):                                        # held at the primary's position, as before
+            self.assertAlmostEqual(d["smoothed_crop_x"][i], 1000 - CROP_W / 2, delta=3)
+
+    def test_solo_track_has_no_handoff_and_same_result(self):
+        n = 60
+        plan = plan_layout(_analysis([_track(0, 1010, list(range(n)))], n))
+        d = plan.diagnostics
+        self.assertEqual((d["handoff_tracks"], d["handoff_rejected"], d["handoff_boundaries"]), ([], [], []))
+        self.assertEqual(set(d["position_source"]), {"primary"})
+
     def test_centre_crop_is_explicit_when_no_reliable_face(self):
         plan = plan_layout(_analysis([_track(0, 1010, list(range(5)))], 60))   # 8 % coverage
         self.assertEqual(plan.layout, LAYOUT_CENTER)
@@ -197,6 +260,66 @@ class EndToEndTest(unittest.TestCase):
         d = self.plan.diagnostics
         self.assertAlmostEqual(d["face_in_crop_median"], 0.5, delta=0.08)
         self.assertEqual(d["clamped_right_samples"], 0)
+
+
+@unittest.skipUnless(HAVE_CV and HAVE_FFMPEG and FACE_IMAGE.is_file(), "needs OpenCV, ffmpeg and tests/data/face.jpg")
+class HandoffEndToEndTest(unittest.TestCase):
+    """One person for 40 s; a source edit at 10 s moves the face from x=400 to x=1000."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="kivro-handoff-"))
+        face = cv2.resize(cv2.imread(str(FACE_IMAGE)), (220, 220))
+        fps, seconds, cls.cut = 30, 40, 10.0
+        raw = cls.tmp / "raw.avi"
+        vw = cv2.VideoWriter(str(raw), cv2.VideoWriter_fourcc(*"MJPG"), fps, (W, H))
+        for k in range(seconds * fps):
+            t = k / fps
+            frame = np.full((H, W, 3), (70, 80, 90), np.uint8)
+            cx = 400 if t < cls.cut else 1000
+            x0 = int(cx - 110 + 12 * np.sin(t / 3))
+            frame[200:420, x0:x0 + 220] = face
+            vw.write(frame)
+        vw.release()
+        cls.source = cls.tmp / "source.mp4"
+        subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(raw),
+                        "-f", "lavfi", "-i", "sine=frequency=330", "-t", str(seconds),
+                        "-c:v", "libx264", "-preset", "veryfast", "-g", "240", "-bf", "3", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-shortest", str(cls.source)], check=True)
+        cls.analysis = framing.analyze_clip(cls.source, 0.0, float(seconds))
+        cls.plan = plan_layout(cls.analysis)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_detector_splits_the_person_into_two_tracks_and_plan_hands_off(self):
+        self.assertEqual(self.plan.layout, LAYOUT_SINGLE, self.plan.note)
+        d = self.plan.diagnostics
+        self.assertGreaterEqual(len(self.analysis.tracks), 2)
+        self.assertEqual(len(d["handoff_tracks"]), 1, d)
+        self.assertGreaterEqual(d["handoff_samples"], 16)            # ~10 s at 2 fps, minus edge samples
+        self.assertEqual(d["handoff_rejected"], [])
+        before = d["smoothed_crop_x"][:16]
+        after = d["smoothed_crop_x"][24:]
+        for x in before:
+            self.assertAlmostEqual(x, 400 - CROP_W / 2, delta=40, msg=f"before the cut: {x}")
+        for x in after:
+            self.assertAlmostEqual(x, 1000 - CROP_W / 2, delta=40, msg=f"after the cut: {x}")
+
+    def test_rendered_face_is_centred_before_and_after_the_edit(self):
+        from video import render_clip
+        out = render_clip(self.source, 0.0, 40.0, None, self.tmp / "out.mp4", self.plan)
+        det = framing._Detector(1080, 1920)
+        for tt in (1.0, 4.0, 7.0, 9.0, 11.5, 14.0, 20.0, 30.0, 38.0):
+            png = self.tmp / f"f{tt}.png"
+            subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", str(tt), "-i", str(out),
+                            "-frames:v", "1", str(png)], check=True)
+            faces = det.detect(cv2.imread(str(png)))
+            self.assertTrue(faces, f"face missing from output at {tt}s (crop held at the wrong position)")
+            cx = faces[0][0] + faces[0][2] / 2
+            self.assertGreaterEqual(cx, 420, f"face too far left at {tt}s: {cx:.0f}")
+            self.assertLessEqual(cx, 660, f"face too far right at {tt}s: {cx:.0f}")
 
 
 if __name__ == "__main__":

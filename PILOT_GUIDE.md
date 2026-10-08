@@ -132,8 +132,13 @@ For a second-by-second view of one clip:
 python app\framing_report.py output\<job_id>\job.json c001
 ```
 It prints, per sample, the target crop x, the rendered crop x, the face
-position inside the crop and flags for CLAMPED-LEFT / CLAMPED-RIGHT /
-OFF-CENTRE. Paste that output when reporting a framing problem.
+position inside the crop, where that position came from (`primary`,
+`handoff:#id` when another track of the same person was followed after a
+source edit, `interpolated` when nothing was visible) and flags for
+CLAMPED-LEFT / CLAMPED-RIGHT / OFF-CENTRE / PRIMARY ABSENT with the visible
+face that was deliberately not followed and why (co-present second person,
+face size outside 0.5x-2x the primary, fewer than 2 s of detections). Paste
+that output when reporting a framing problem.
 
 ## Whisper and names
 
