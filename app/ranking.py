@@ -6,7 +6,8 @@ Candidate segment generation + ranking with Ollama (Qwen).
 2. rank_candidates(): ask a local Qwen model (via Ollama) to score each window.
    If Ollama is unreachable, fall back to a simple heuristic so the pipeline
    still finishes.
-3. select_best(): pick the top N non-overlapping windows, in video order.
+3. select_clips(): keep EVERY window that clears MIN_CLIP_SCORE and is not a
+   duplicate of a stronger kept window, in video order. There is no top-K.
 """
 
 import json
@@ -21,7 +22,16 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
 MIN_LEN = 20.0
 MAX_LEN = 60.0
 TARGET_LEN = 40.0
-MAX_CANDIDATES = 40  # keep the prompt small enough for a 3B model
+SCORE_BATCH_SIZE = 40  # candidates per Ollama request (keeps the prompt small for a 3B model)
+
+# Dynamic selection (v0.3). Scores are 0-10 from the unchanged ranking prompt.
+MIN_CLIP_SCORE = float(os.environ.get("MIN_CLIP_SCORE", "7"))
+# Two windows are the same moment when they overlap by more than this fraction
+# of the shorter one; the stronger is kept.
+DEDUP_MAX_OVERLAP = float(os.environ.get("DEDUP_MAX_OVERLAP", "0.2"))
+# Never return fewer than this many clips (flagged below_threshold) so the
+# operator always has something to review. 0 disables the floor.
+MIN_CLIPS_FLOOR = int(os.environ.get("MIN_CLIPS_FLOOR", "3"))
 
 
 # --------------------------------------------------------------------------- #
@@ -64,11 +74,6 @@ def build_candidates(segments: list[dict]) -> list[dict]:
             bucketed[key] = c
     cands = sorted(bucketed.values(), key=lambda c: c["start"])
 
-    # Cap the count by sampling evenly across the video.
-    if len(cands) > MAX_CANDIDATES:
-        step = len(cands) / MAX_CANDIDATES
-        cands = [cands[int(k * step)] for k in range(MAX_CANDIDATES)]
-
     for idx, c in enumerate(cands):
         c["id"] = idx
     return cands
@@ -100,6 +105,14 @@ Candidates:
 
 
 def _ollama_scores(cands: list[dict]) -> dict[int, float]:
+    """Score every candidate; long videos are sent in batches of SCORE_BATCH_SIZE."""
+    scores: dict[int, float] = {}
+    for i in range(0, len(cands), SCORE_BATCH_SIZE):
+        scores.update(_ollama_scores_batch(cands[i:i + SCORE_BATCH_SIZE]))
+    return scores
+
+
+def _ollama_scores_batch(cands: list[dict]) -> dict[int, float]:
     listing = "\n\n".join(
         f'[id={c["id"]}] ({c["end"] - c["start"]:.0f}s) {c["text"]}' for c in cands
     )
@@ -181,14 +194,53 @@ def rank_candidates(cands: list[dict]) -> tuple[list[dict], str]:
 # --------------------------------------------------------------------------- #
 # Selection
 # --------------------------------------------------------------------------- #
-def select_best(cands: list[dict], min_clips: int = 3, max_clips: int = 5) -> list[dict]:
-    """Greedy pick by score, skipping anything that overlaps an already chosen clip."""
+def overlap_fraction(a: dict, b: dict) -> float:
+    """Temporal overlap as a fraction of the shorter window (0 = disjoint)."""
+    inter = min(a["end"], b["end"]) - max(a["start"], b["start"])
+    if inter <= 0:
+        return 0.0
+    shorter = min(a["end"] - a["start"], b["end"] - b["start"])
+    return inter / max(shorter, 1e-6)
+
+
+def select_clips(cands: list[dict], min_score: float | None = None,
+                 max_overlap: float | None = None, floor: int = 0) -> list[dict]:
+    """
+    Threshold-based selection, strongest first:
+      1. a candidate is accepted when score >= min_score;
+      2. it is dropped when it overlaps an already accepted candidate by more
+         than max_overlap of the shorter one (same moment, keep the stronger);
+      3. if fewer than `floor` candidates were accepted, the strongest rejected
+         ones (still deduplicated) are added with below_threshold=True.
+    Result is in video order. No top-K anywhere.
+    """
+    if min_score is None:
+        min_score = MIN_CLIP_SCORE
+    if max_overlap is None:
+        max_overlap = DEDUP_MAX_OVERLAP
+    ranked = sorted(cands, key=lambda c: (c["score"], -c["start"]), reverse=True)
+
     chosen: list[dict] = []
-    for c in sorted(cands, key=lambda c: c["score"], reverse=True):
-        if any(c["start"] < o["end"] and o["start"] < c["end"] for o in chosen):
-            continue
-        chosen.append(c)
-        if len(chosen) >= max_clips:
+
+    def dup(c):
+        return any(overlap_fraction(c, o) > max_overlap for o in chosen)
+
+    for c in ranked:
+        if c["score"] < min_score:
             break
+        if dup(c):
+            continue
+        c["below_threshold"] = False
+        chosen.append(c)
+
+    if len(chosen) < floor:
+        for c in ranked:
+            if len(chosen) >= floor:
+                break
+            if c["score"] >= min_score or dup(c):
+                continue
+            c["below_threshold"] = True
+            chosen.append(c)
+
     chosen.sort(key=lambda c: c["start"])
     return chosen

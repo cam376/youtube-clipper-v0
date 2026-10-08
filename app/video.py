@@ -16,66 +16,22 @@ OUT_W, OUT_H = 1080, 1920
 FILTER_SCRIPT_MODERN = "-/filter_complex"
 FILTER_SCRIPT_LEGACY = "-filter_complex_script"
 
-# Subtitle look: big white text with a black outline, placed in the lower third.
-# For split-screen clips the same style is used with Alignment 5 (middle-centre),
-# which puts the text on the seam between the two speakers, away from both faces.
-ASS_HEADER = """[Script Info]
-ScriptType: v4.00+
-PlayResX: {OUT_W}
-PlayResY: {OUT_H}
-WrapStyle: 0
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,5,2,{alignment},60,60,420,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-
-
-def _ass_time(t: float) -> str:
-    t = max(t, 0.0)
-    h = int(t // 3600)
-    m = int((t % 3600) // 60)
-    s = t % 60
-    return f"{h}:{m:02d}:{s:05.2f}"
-
-
-def _escape_ass(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("{", "(").replace("}", ")")
+# Subtitles are produced by captions.py (cues) + styles.py (ASS presets).
+# build_subtitles() is kept for the v0.2.1 call sites and tests: it renders
+# the CLEAN preset, which is byte-for-byte the v0.2.1 look.
+from captions import build_cues  # noqa: E402
+from styles import render_ass, ass_time as _ass_time, escape_ass as _escape_ass  # noqa: E402,F401
 
 
 def build_subtitles(words: list[dict], clip_start: float, clip_end: float, ass_path: Path,
                     max_words: int = 4, split_screen: bool = False) -> Path:
     """
-    Group word timestamps into short chunks (a few words each) and write an
-    ASS file whose times are relative to the clip start.
+    Group word timestamps into short cues and write an ASS file whose times
+    are relative to the clip start (CLEAN style, default font).
     split_screen=True centres the captions vertically (safe zone between faces).
     """
-    clip_words = [w for w in words if w["end"] > clip_start and w["start"] < clip_end]
-    lines = []
-    chunk: list[dict] = []
-
-    def flush():
-        if not chunk:
-            return
-        start = chunk[0]["start"] - clip_start
-        end = chunk[-1]["end"] - clip_start
-        text = _escape_ass(" ".join(w["word"] for w in chunk))
-        lines.append(f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{text}")
-        chunk.clear()
-
-    for w in clip_words:
-        if chunk and (len(chunk) >= max_words or w["start"] - chunk[-1]["end"] > 1.0):
-            flush()
-        chunk.append(w)
-        if w["word"][-1:] in ".!?,":
-            flush()
-    flush()
-
-    header = ASS_HEADER.format(OUT_W=OUT_W, OUT_H=OUT_H, alignment=5 if split_screen else 2)
-    ass_path.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
+    cues = build_cues(words, clip_start, clip_end, max_words=max_words)
+    render_ass(cues, ass_path, style="CLEAN", font_choice=None, split_screen=split_screen)
     return ass_path
 
 

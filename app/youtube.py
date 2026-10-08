@@ -34,7 +34,19 @@ def download_youtube_video(url: str, dest_dir: Path, max_height: int = 1080) -> 
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.extract_info(url, download=True)
+        info = ydl.extract_info(url, download=True) or {}
+
+    # Title/duration for the job manifest; nothing else from the metadata is kept.
+    try:
+        import json
+        (dest_dir / "source.json").write_text(json.dumps({
+            "title": info.get("title"),
+            "duration": info.get("duration"),
+            "uploader": info.get("uploader"),
+            "id": info.get("id"),
+        }, ensure_ascii=False, indent=1), encoding="utf-8")
+    except (OSError, TypeError):
+        pass
 
     candidates = sorted(dest_dir.glob("source.*"))
     mp4 = [p for p in candidates if p.suffix == ".mp4"]
