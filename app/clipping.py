@@ -17,9 +17,12 @@ rerender_clip():
 from __future__ import annotations
 
 import json
+import logging
 import os
 import traceback
 from pathlib import Path
+
+log = logging.getLogger("clipper.clipping")
 
 import manifest as mf
 from youtube import download_youtube_video
@@ -152,6 +155,7 @@ def run_job(job: dict, url: str, job_dir: Path, public_prefix: str) -> None:
                 plan = None
                 job["framing_warning"] = f"face analysis failed, used centre crop ({exc.__class__.__name__}: {exc})"
             layout = plan.layout if plan else LAYOUT_CENTER
+            log.info("clip %d framing: %s | %s", i, layout, plan.note if plan else "analysis failed, centre crop")
 
             cues = build_cues(transcript["words"], c["start"], c["end"])
             ass_path = job_dir / f"clip_{i}.ass"

@@ -133,6 +133,7 @@ class FramePlan:
     layout: str
     regions: list[Region]          # 1 for SINGLE, 2 for SPLIT (top, bottom), 0 for CENTER
     note: str = ""
+    diagnostics: dict = field(default_factory=dict)   # SINGLE_PERSON: see _single_region
 
 
 # --------------------------------------------------------------------------- #
@@ -355,17 +356,56 @@ def _even(v: float) -> int:
     return int(round(v / 2)) * 2
 
 
-def _single_region(a: FaceAnalysis, tr: Track) -> Region:
+def _single_region(a: FaceAnalysis, tr: Track) -> tuple[Region, dict]:
+    """
+    9:16 crop that follows the primary face horizontally. Returns the region
+    and a diagnostics dict that makes the decision auditable in job.json:
+    the raw per-sample target (face centre - crop_w/2, clamped), the final
+    smoothed crop x per sample, how many samples had no detection (held or
+    interpolated from the track), and the geometric-centre x it did NOT use.
+    """
     W, H = a.width, a.height
+    n = a.n_samples
     crop_h = H
     crop_w = _even(H * 9 / 16)
     if crop_w > W:
         crop_w = _even(W)
         crop_h = _even(W * 16 / 9)
-    xs = _smooth_position(_fill_series(tr, a.n_samples, "x"), crop_w, W)
-    cy = float(np.median(_fill_series(tr, a.n_samples, "y")))
+    centres = _fill_series(tr, n, "x")
+    target = np.clip(centres - crop_w / 2, 0, max(W - crop_w, 0))
+    xs = _smooth_position(centres, crop_w, W)
+    cy = float(np.median(_fill_series(tr, n, "y")))
     y = float(np.clip(cy - crop_h * 0.4, 0, max(H - crop_h, 0)))
-    return Region(crop_w, crop_h, _keyframes(xs), [(0.0, round(y, 1))], tr.id)
+    mx, _, mw, _ = tr.median_box()
+    geometric_x = round((W - crop_w) / 2, 1)
+    diag = {
+        "primary_track": tr.id,
+        "coverage": round(tr.coverage(n), 3),
+        "span": round(tr.span(n), 3),
+        "median_face_x": round(float(mx + mw / 2), 1),
+        "crop_w": crop_w,
+        "geometric_centre_x": geometric_x,
+        "geometric_centre_used": False,
+        "detected_samples": len(tr.boxes),
+        "fallback_samples": n - len(tr.boxes),          # held / interpolated from the track
+        "target_crop_x": [round(float(v), 1) for v in target],
+        "smoothed_crop_x": [round(float(v), 1) for v in xs],
+        "crop_x_min": round(float(xs.min()), 1),
+        "crop_x_max": round(float(xs.max()), 1),
+    }
+    return Region(crop_w, crop_h, _keyframes(xs), [(0.0, round(y, 1))], tr.id), diag
+
+
+def _primary_track(a: FaceAnalysis, candidates: list[Track]) -> Track:
+    """
+    The person to centre on. Among tracks that are present often enough,
+    prefer the one that is both present and large: coverage x median face
+    height. A small face that is always in frame (poster, picture-in-picture,
+    logo) must not win over the actual speaker. With one track this is a no-op.
+    """
+    n = a.n_samples
+    eligible = [t for t in candidates if t.coverage(n) >= SINGLE_MIN_COVERAGE] or candidates
+    return max(eligible, key=lambda t: t.coverage(n) * t.median_box()[3])
 
 
 def _half_region(a: FaceAnalysis, tr: Track) -> Region:
@@ -418,7 +458,8 @@ def classification_metrics(a: FaceAnalysis) -> dict:
 
 def plan_layout(a: FaceAnalysis) -> FramePlan:
     if a.n_samples == 0 or not a.tracks:
-        return FramePlan(LAYOUT_CENTER, [], "no frames or no faces detected")
+        return FramePlan(LAYOUT_CENTER, [], "no frames or no faces detected",
+                         {"geometric_centre_used": True, "reason": "no faces detected"})
 
     n = a.n_samples
     ranked = sorted(a.tracks, key=lambda t: t.coverage(n), reverse=True)
@@ -440,17 +481,29 @@ def plan_layout(a: FaceAnalysis) -> FramePlan:
             return FramePlan(LAYOUT_SPLIT, [_half_region(a, left), _half_region(a, right)],
                              f"two persistent faces ({stats})")
         reason = "too close" if sep < MIN_SEPARATION_FRAC else "second face dominated"
-        return FramePlan(LAYOUT_SINGLE, [_single_region(a, first)], f"{reason} ({stats})")
+        primary = _primary_track(a, persistent)
+        region, diag = _single_region(a, primary)
+        return FramePlan(LAYOUT_SINGLE, [region], f"{reason} ({stats}); {_single_note(diag)}", diag)
 
     if cov[0] >= SINGLE_MIN_COVERAGE:
         extra = ""
         if len(ranked) >= 2:
             extra = (f", second face coverage {cov[1]:.0%} span {ranked[1].span(n):.0%} "
                      f"separation {abs(ranked[0].center_x() - ranked[1].center_x()) / a.width:.0%}")
-        return FramePlan(LAYOUT_SINGLE, [_single_region(a, ranked[0])],
-                         f"one persistent face (coverage {cov[0]:.0%}, samples {n}{extra})")
+        primary = _primary_track(a, ranked)
+        region, diag = _single_region(a, primary)
+        return FramePlan(LAYOUT_SINGLE, [region],
+                         f"one persistent face (coverage {cov[0]:.0%}, samples {n}{extra}); {_single_note(diag)}", diag)
 
-    return FramePlan(LAYOUT_CENTER, [], f"faces too sporadic (best coverage {cov[0]:.0%}, samples {n})")
+    return FramePlan(LAYOUT_CENTER, [], f"faces too sporadic (best coverage {cov[0]:.0%}, samples {n})",
+                     {"geometric_centre_used": True, "reason": "no reliable face track"})
+
+
+def _single_note(d: dict) -> str:
+    return (f"primary track #{d['primary_track']} coverage {d['coverage']:.0%} span {d['span']:.0%}, "
+            f"median face x {d['median_face_x']:.0f}, crop x {d['crop_x_min']:.0f}-{d['crop_x_max']:.0f} "
+            f"(geometric centre would be {d['geometric_centre_x']:.0f}), "
+            f"{d['fallback_samples']} of {d['detected_samples'] + d['fallback_samples']} samples held/interpolated")
 
 
 # --------------------------------------------------------------------------- #
@@ -525,6 +578,13 @@ def save_debug_sheet(a: FaceAnalysis, plan: FramePlan, out_path: Path, max_tiles
             p1 = (int(x * inv), int(y * inv))
             p2 = (int((x + w) * inv), int((y + h) * inv))
             cv2.rectangle(img, p1, p2, region_colors[ri % 2], 2)
+            cxp = int((x + w / 2) * inv)
+            cv2.line(img, (cxp, p1[1]), (cxp, p2[1]), region_colors[ri % 2], 1)
+        if plan.layout == LAYOUT_CENTER:
+            gx = (a.width - _even(a.height * 9 / 16)) / 2
+            cv2.rectangle(img, (int(gx * inv), 0), (int((gx + _even(a.height * 9 / 16)) * inv), img.shape[0] - 1), (128, 128, 128), 1)
+            cv2.putText(img, "GEOMETRIC CENTRE", (int(gx * inv) + 4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+        primary_ids = {r.track_id for r in plan.regions}
         for tr in a.tracks:
             if i not in tr.boxes:
                 continue
@@ -532,8 +592,9 @@ def save_debug_sheet(a: FaceAnalysis, plan: FramePlan, out_path: Path, max_tiles
             col = colors[tr.id % len(colors)]
             p1 = (int(x * inv), int(y * inv))
             p2 = (int((x + w) * inv), int((y + h) * inv))
-            cv2.rectangle(img, p1, p2, col, 2)
-            cv2.putText(img, f"#{tr.id} {tr.coverage(a.n_samples):.0%}", (p1[0], max(p1[1] - 4, 12)),
+            cv2.rectangle(img, p1, p2, col, 3 if tr.id in primary_ids else 1)
+            tag = f"#{tr.id} {tr.coverage(a.n_samples):.0%}" + (" PRIMARY" if tr.id in primary_ids else "")
+            cv2.putText(img, tag, (p1[0], max(p1[1] - 4, 12)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, col, 1, cv2.LINE_AA)
         cv2.putText(img, f"t={t:.1f}s", (6, img.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
         tiles.append(img)
@@ -555,6 +616,7 @@ def save_debug_sheet(a: FaceAnalysis, plan: FramePlan, out_path: Path, max_tiles
         "detector": a.detector_name,
         "samples": a.n_samples,
         "classification": classification_metrics(a),
+        "plan_diagnostics": plan.diagnostics,
         "regions": [
             {"track": r.track_id, "w": r.w, "h": r.h, "x_keys": r.x_keys, "y_keys": r.y_keys}
             for r in plan.regions

@@ -109,6 +109,21 @@ to you with that text. Selections are kept in the client's browser
 (localStorage) so a refresh does not lose them. Map the clip numbers back to
 your HD files with `output\<job_id>\export_<library_id>.json`.
 
+## Checking a face-centred clip
+
+Each clip's layout note (in `job.json` under `layout_note`, and in the
+console log line `clip N framing:`) states, for a face-centred clip, the
+primary track id, its coverage and span, the median face x in the source,
+the crop x range actually used, the geometric-centre x it did not use, and
+how many samples were held or interpolated. `job.json` also stores the
+per-sample target and smoothed crop x under `plan.diagnostics`. With
+`DEBUG_FACES=true`, `clip_N_faces.jpg` draws the primary track in a thick
+box labelled PRIMARY, the crop window and its centre line; a grey box
+labelled GEOMETRIC CENTRE appears only on centre-crop clips.
+
+If a clip is framed on the wrong face, that note shows which track won and
+why; send it along with the clip when reporting.
+
 ## Whisper and names
 
 Whisper `small` stays the default. faster-whisper supports an

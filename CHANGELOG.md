@@ -33,7 +33,18 @@ caption timing source and output resolution are unchanged.
   optional WhatsApp link. HD masters untouched; no internal paths exported.
 - New env: `LIBRARIES_DIR`, `CLIENT_PREVIEW_WATERMARK`, `MIN_CLIP_SCORE`,
   `DEDUP_MAX_OVERLAP`.
-- 53 new tests (71 total). See PILOT_GUIDE.md for the operator workflow.
+- Face-centred (SINGLE_PERSON) hardening after the first pilot clip: the
+  primary face is chosen by coverage x face height among tracks present in
+  >= 30 % of samples, so a small always-visible face (logo, picture-in-
+  picture) cannot win over the speaker. The plan now carries explicit
+  diagnostics in job.json (primary track, coverage, span, median face x,
+  per-sample target and smoothed crop x, held/interpolated sample count,
+  geometric-centre x and whether it was used), the clip's layout note
+  summarises them, and the DEBUG_FACES sheet marks the primary track, crop
+  window and crop centre. Split-screen code is unchanged.
+- Tests: `tests/test_single_person_framing.py` (right-side speaker, dropout,
+  leading gap, primary-track choice, rendered output face position).
+- See PILOT_GUIDE.md for the operator workflow.
 
 ## v0.2.1 — 2026-10-07 — release candidate, engine frozen
 

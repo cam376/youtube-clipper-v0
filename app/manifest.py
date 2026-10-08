@@ -34,6 +34,7 @@ def plan_to_dict(plan: FramePlan | None) -> dict | None:
     return {
         "layout": plan.layout,
         "note": plan.note,
+        "diagnostics": plan.diagnostics,
         "regions": [
             {"w": r.w, "h": r.h, "x_keys": [list(k) for k in r.x_keys], "y_keys": [list(k) for k in r.y_keys],
              "track_id": r.track_id}
@@ -52,7 +53,7 @@ def plan_from_dict(d: dict | None) -> FramePlan | None:
                track_id=r.get("track_id"))
         for r in d.get("regions", [])
     ]
-    return FramePlan(d["layout"], regions, d.get("note", ""))
+    return FramePlan(d["layout"], regions, d.get("note", ""), d.get("diagnostics") or {})
 
 
 def new_manifest(job_id: str, url: str) -> dict:
