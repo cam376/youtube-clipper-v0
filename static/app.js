@@ -114,7 +114,7 @@ function renderJob(job) {
     `<span><b>${(job.clips || []).length}</b> clips</span>`,
     `<span><b>${job.library_count || 0}</b> in client library</span>`,
     rk.candidates ? `<span><b>${rk.candidates}</b> candidates scored, max ${rk.score_max ?? "?"}, median ${rk.score_median ?? "?"}</span>` : "",
-    sel.min_clip_score != null ? `<span>threshold <b>${sel.min_clip_score}</b>${sel.floor_added ? ` · ${sel.floor_added} below threshold kept for review` : ""}</span>` : "",
+    sel.min_clip_score != null ? `<span>threshold <b>${sel.min_clip_score}</b></span>` : "",
     (job.glossary || []).length ? `<span>glossary: <b>${job.glossary.length}</b> terms</span>` : "",
   ].join("");
 
@@ -128,13 +128,12 @@ function renderClips(clips) {
   const fonts = (Kivro.options && Kivro.options.fonts) || [];
   clips.forEach((clip) => {
     const card = document.createElement("div");
-    card.className = "clip" + (clip.in_library ? " in-library" : "") + (clip.below_threshold ? " below" : "");
+    card.className = "clip" + (clip.in_library ? " in-library" : "");
     card.dataset.id = clip.id;
     const busy = clip.render_state === "queued" || clip.render_state === "rendering";
     const badges = [
       clip.edited ? '<span class="badge edited">edited</span>' : "",
       clip.in_library ? '<span class="badge lib">in client library</span>' : "",
-      clip.below_threshold ? '<span class="badge warn">below threshold</span>' : "",
       busy ? `<span class="badge rendering">${clip.render_state}…</span>` : "",
       clip.render_state === "error" ? `<span class="badge warn" title="${escapeHtml(clip.render_error || "")}">render error</span>` : "",
       clip.font_note ? `<span class="badge warn" title="${escapeHtml(clip.font_note)}">font fallback</span>` : "",

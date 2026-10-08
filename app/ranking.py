@@ -29,9 +29,7 @@ MIN_CLIP_SCORE = float(os.environ.get("MIN_CLIP_SCORE", "7"))
 # Two windows are the same moment when they overlap by more than this fraction
 # of the shorter one; the stronger is kept.
 DEDUP_MAX_OVERLAP = float(os.environ.get("DEDUP_MAX_OVERLAP", "0.2"))
-# Never return fewer than this many clips (flagged below_threshold) so the
-# operator always has something to review. 0 disables the floor.
-MIN_CLIPS_FLOOR = int(os.environ.get("MIN_CLIPS_FLOOR", "3"))
+# There is deliberately no minimum clip count: 0 qualifying moments -> 0 clips.
 
 
 # --------------------------------------------------------------------------- #
@@ -204,15 +202,13 @@ def overlap_fraction(a: dict, b: dict) -> float:
 
 
 def select_clips(cands: list[dict], min_score: float | None = None,
-                 max_overlap: float | None = None, floor: int = 0) -> list[dict]:
+                 max_overlap: float | None = None) -> list[dict]:
     """
     Threshold-based selection, strongest first:
       1. a candidate is accepted when score >= min_score;
       2. it is dropped when it overlaps an already accepted candidate by more
-         than max_overlap of the shorter one (same moment, keep the stronger);
-      3. if fewer than `floor` candidates were accepted, the strongest rejected
-         ones (still deduplicated) are added with below_threshold=True.
-    Result is in video order. No top-K anywhere.
+         than max_overlap of the shorter one (same moment, keep the stronger).
+    Result is in video order. No top-K, no minimum: quality over quantity.
     """
     if min_score is None:
         min_score = MIN_CLIP_SCORE
@@ -230,17 +226,7 @@ def select_clips(cands: list[dict], min_score: float | None = None,
             break
         if dup(c):
             continue
-        c["below_threshold"] = False
         chosen.append(c)
-
-    if len(chosen) < floor:
-        for c in ranked:
-            if len(chosen) >= floor:
-                break
-            if c["score"] >= min_score or dup(c):
-                continue
-            c["below_threshold"] = True
-            chosen.append(c)
 
     chosen.sort(key=lambda c: c["start"])
     return chosen

@@ -9,9 +9,8 @@ caption timing source and output resolution are unchanged.
 - **Dynamic clip count.** `select_clips()` replaces the fixed top-5: every
   candidate with score >= `MIN_CLIP_SCORE` (default 7 on the unchanged 0-10
   ranking scale) is kept unless it overlaps a stronger kept clip by more than
-  `DEDUP_MAX_OVERLAP` (20 % of the shorter clip). If fewer than
-  `MIN_CLIPS_FLOOR` (3) qualify, the strongest rejected ones are added and
-  flagged `below_threshold`. Candidates are no longer sampled down to 40:
+  `DEDUP_MAX_OVERLAP` (20 % of the shorter clip). There is no minimum
+  count: 0 qualifying moments give 0 clips. Candidates are no longer sampled down to 40:
   Ollama scores them in batches of 40 with the same prompt.
   `output/<job>/ranking.json` records every candidate and score.
 - **Persistent job manifest** `output/<job_id>/job.json` (source, title,
@@ -33,7 +32,7 @@ caption timing source and output resolution are unchanged.
   localStorage, a sticky "N clips selected" bar, clipboard summary and
   optional WhatsApp link. HD masters untouched; no internal paths exported.
 - New env: `LIBRARIES_DIR`, `CLIENT_PREVIEW_WATERMARK`, `MIN_CLIP_SCORE`,
-  `DEDUP_MAX_OVERLAP`, `MIN_CLIPS_FLOOR`.
+  `DEDUP_MAX_OVERLAP`.
 - 53 new tests (71 total). See PILOT_GUIDE.md for the operator workflow.
 
 ## v0.2.1 — 2026-10-07 — release candidate, engine frozen

@@ -13,8 +13,9 @@ is a static folder you host for the client.
    scale). A 27-minute video can return 3 clips or 30. The status line says
    "N clips ready"; the summary line shows how many candidates were scored,
    the max and median score, and the threshold.
-4. If fewer than 3 clips qualify, the 3 strongest are kept anyway and marked
-   **below threshold** (dashed border) so you can judge them yourself.
+4. There is no minimum: a video with no moment above the threshold returns
+   0 clips. Lower `MIN_CLIP_SCORE` only if you judge the rejected candidates
+   in `ranking.json` to be genuinely strong.
 5. Jobs are persistent: close the server, reopen later, click the job in the
    **Jobs** list. Everything (clips, edits, styles, selection) is in
    `output\<job_id>\job.json`.
@@ -79,7 +80,7 @@ Rerenders run one at a time in the background; cards show "queued…" /
 The folder is a plain static site. Any of these works, no backend needed:
 
 - **Netlify Drop** (https://app.netlify.com/drop): drag the folder, get a
-  URL in seconds. Rename the site to something like `arnaud-kivro`.
+  URL in seconds. Rename the site to something like `arnor-kivro`.
 - **Cloudflare Pages**: create a project, "Upload assets", drop the folder.
 - **GitHub Pages**: push the folder to a repo, enable Pages.
 - Any web host / S3 bucket with static hosting: upload the folder as is.
@@ -100,7 +101,7 @@ Clip 07
 
 Total selected: 3
 
-Library: Arnaud's Content Library (arnaud-20261008-3ad7c2)
+Library: Arnor's Content Library (arnor-20261008-3ad7c2)
 ```
 
 If you entered a WhatsApp number, a **Send on WhatsApp** button opens a chat

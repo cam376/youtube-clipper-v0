@@ -24,7 +24,7 @@ from pathlib import Path
 import manifest as mf
 from youtube import download_youtube_video
 from transcription import extract_audio, transcribe
-from ranking import build_candidates, rank_candidates, select_clips, MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP, MIN_CLIPS_FLOOR
+from ranking import build_candidates, rank_candidates, select_clips, MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP
 from video import render_clip
 from captions import build_cues
 from styles import render_ass, DEFAULT_STYLE, normalize_style
@@ -65,7 +65,6 @@ def _clip_record(i: int, c: dict, plan, cues: list[dict], ass_info: dict, out: P
         "end": c["end"],
         "duration": round(c["end"] - c["start"], 1),
         "score": c.get("score"),
-        "below_threshold": bool(c.get("below_threshold", False)),
         "text": c["text"],
         "layout": layout,
         "layout_note": plan.note if plan else "",
@@ -124,7 +123,7 @@ def run_job(job: dict, url: str, job_dir: Path, public_prefix: str) -> None:
             raise RuntimeError("The video is too short to produce 20-60 s clips.")
         ranked, note = rank_candidates(cands)
         job["ranking_note"] = note
-        chosen = select_clips(ranked, floor=MIN_CLIPS_FLOOR)
+        chosen = select_clips(ranked)
         scores = sorted((c["score"] for c in ranked), reverse=True)
         manifest["ranking"] = {"note": note, "candidates": len(ranked),
                                "score_max": scores[0] if scores else None,
@@ -132,9 +131,7 @@ def run_job(job: dict, url: str, job_dir: Path, public_prefix: str) -> None:
         manifest["selection"] = {
             "min_clip_score": MIN_CLIP_SCORE,
             "dedup_max_overlap": DEDUP_MAX_OVERLAP,
-            "min_clips_floor": MIN_CLIPS_FLOOR,
-            "accepted": sum(1 for c in chosen if not c.get("below_threshold")),
-            "floor_added": sum(1 for c in chosen if c.get("below_threshold")),
+            "accepted": len(chosen),
         }
         (job_dir / "ranking.json").write_text(json.dumps(
             sorted(ranked, key=lambda c: c["score"], reverse=True), indent=1, ensure_ascii=False), encoding="utf-8")

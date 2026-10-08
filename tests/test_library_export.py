@@ -69,7 +69,7 @@ class ExportTest(unittest.TestCase):
         mf.save(cls.job, m)
         cls.m = m
         cls.hd_hashes = {i: sha(cls.job / f"clip_{i}.mp4") for i in range(1, 4)}
-        cls.summary = export_library(cls.job, cls.m, {"client_name": "Arnaud", "whatsapp_number": "+33 6 12 34 56 78",
+        cls.summary = export_library(cls.job, cls.m, {"client_name": "Arnor", "whatsapp_number": "+33 6 12 34 56 78",
                                                       "watermark": True}, cls.libs)
         cls.lib_dir = Path(cls.summary["path"])
         cls.library = json.loads((cls.lib_dir / "library.json").read_text(encoding="utf-8"))
@@ -103,7 +103,7 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(self.library["whatsapp_number"], "33612345678")
         self.assertFalse(self.library["show_price"])
         self.assertIsNone(self.library["price_per_clip"])
-        self.assertEqual(self.library["title"], "Arnaud's Content Library")
+        self.assertEqual(self.library["title"], "Arnor's Content Library")
         self.assertEqual(self.library["subtitle"], "2 clips prepared for you")
 
     def test_index_html_is_self_contained(self):

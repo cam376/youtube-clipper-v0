@@ -30,9 +30,8 @@ The ranking prompt and criteria are unchanged (0-10 per candidate). Selection:
 |---|---|---|
 | `MIN_CLIP_SCORE` | `7` | a candidate is kept when its score is >= this |
 | `DEDUP_MAX_OVERLAP` | `0.2` | dropped when it overlaps a stronger kept clip by more than 20 % of the shorter one |
-| `MIN_CLIPS_FLOOR` | `3` | if fewer qualify, the strongest rejected ones are added, flagged `below_threshold` |
 
-No top-K anywhere: 3 strong moments give 3 clips, 40 give 40. Clips render
+No top-K and no minimum: 0 strong moments give 0 clips, 3 give 3, 40 give 40. Clips render
 one at a time. `output/<job_id>/ranking.json` holds every candidate's score.
 
 ## Captions, styles, fonts
@@ -116,7 +115,7 @@ client page test runs only if `playwright` is installed.
 | `MAX_CONCURRENT_JOBS` | `1`                 | jobs processed at once; others wait       |
 | `LIBRARIES_DIR`  | `./client_libraries`     | where client libraries are exported       |
 | `CLIENT_PREVIEW_WATERMARK` | `true`         | default for the "KIVRO PREVIEW" mark on exported previews |
-| `MIN_CLIP_SCORE` / `DEDUP_MAX_OVERLAP` / `MIN_CLIPS_FLOOR` | `7` / `0.2` / `3` | see Clip selection |
+| `MIN_CLIP_SCORE` / `DEDUP_MAX_OVERLAP` | `7` / `0.2` | see Clip selection |
 
 ## Whisper model policy (v0.2.1)
 

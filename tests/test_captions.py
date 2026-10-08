@@ -41,15 +41,15 @@ class EditTimingTest(unittest.TestCase):
         self.cue = build_cues(words("J'ai rencontré Arnault Angeli"), 10.0, 20.0)[0]
 
     def test_same_token_count_keeps_word_timing(self):
-        new = set_cue_text(self.cue, "J'ai rencontré Arnaud Angeli")
-        self.assertEqual(new["text"], "J'ai rencontré Arnaud Angeli")
+        new = set_cue_text(self.cue, "J'ai rencontré Arnor Angeli")
+        self.assertEqual(new["text"], "J'ai rencontré Arnor Angeli")
         self.assertEqual((new["start"], new["end"]), (self.cue["start"], self.cue["end"]))
         self.assertEqual([(w["start"], w["end"]) for w in new["words"]],
                          [(w["start"], w["end"]) for w in self.cue["words"]])
-        self.assertEqual(new["words"][2]["word"], "Arnaud")
+        self.assertEqual(new["words"][2]["word"], "Arnor")
 
     def test_different_token_count_distributes_evenly(self):
-        new = set_cue_text(self.cue, "J'ai vu Arnaud")
+        new = set_cue_text(self.cue, "J'ai vu Arnor")
         self.assertEqual((new["start"], new["end"]), (self.cue["start"], self.cue["end"]))
         self.assertEqual(len(new["words"]), 3)
         slot = (self.cue["end"] - self.cue["start"]) / 3
@@ -82,16 +82,16 @@ class FindReplaceTest(unittest.TestCase):
         self.assertEqual(find_in_cues(self.cues, ""), [])
 
     def test_replace_retimes_only_touched_cues(self):
-        new, n = replace_in_cues(self.cues, "Arnault Angeli", "Arnaud Angeli")
+        new, n = replace_in_cues(self.cues, "Arnault Angeli", "Arnor Angeli")
         self.assertEqual(n, 2)
-        self.assertEqual(new[0]["text"], "Arnaud Angeli a fondé")
-        self.assertEqual(new[2]["text"], "Arnaud Angeli encore")
+        self.assertEqual(new[0]["text"], "Arnor Angeli a fondé")
+        self.assertEqual(new[2]["text"], "Arnor Angeli encore")
         self.assertEqual(new[1], self.cues[1])
         self.assertEqual([w["start"] for w in new[0]["words"]], [w["start"] for w in self.cues[0]["words"]])
 
     def test_replace_does_not_mutate_input(self):
         before = [dict(c) for c in self.cues]
-        replace_in_cues(self.cues, "Arnault", "Arnaud")
+        replace_in_cues(self.cues, "Arnault", "Arnor")
         self.assertEqual(self.cues, before)
 
 

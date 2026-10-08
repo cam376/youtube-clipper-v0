@@ -24,7 +24,7 @@ V021_CLEAN_STYLE = ",72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100
 
 def sample_cues():
     w, t = [], 0.2
-    for tok in "Avec Arnaud Angeli on parle de GoHighLevel. Et ça marche".split():
+    for tok in "Avec Arnor Angeli on parle de GoHighLevel. Et ça marche".split():
         w.append({"start": t, "end": t + 0.3, "word": tok})
         t += 0.4
     return build_cues(w, 0.0, 6.0)
@@ -65,7 +65,7 @@ class PresetAssTest(unittest.TestCase):
 
     def test_bold_is_uppercase(self):
         styles.render_ass(self.cues, self.tmp / "b.ass", style="BOLD")
-        self.assertIn("AVEC ARNAUD ANGELI", (self.tmp / "b.ass").read_text(encoding="utf-8"))
+        self.assertIn("AVEC ARNOR ANGELI", (self.tmp / "b.ass").read_text(encoding="utf-8"))
 
     def test_split_screen_centres_captions(self):
         styles.render_ass(self.cues, self.tmp / "s.ass", style="MINIMAL", split_screen=True)

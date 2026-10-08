@@ -10,7 +10,7 @@ Environment (all optional, defaults suit local development):
     LIBRARIES_DIR        where client libraries are exported (default ./client_libraries)
     MAX_CONCURRENT_JOBS  jobs processed at the same time (default 1); others wait
     CLIENT_PREVIEW_WATERMARK  default for the export watermark checkbox (default true)
-    MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP, MIN_CLIPS_FLOOR: see ranking.py
+    MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP: see ranking.py
     WHISPER_MODEL, OLLAMA_MODEL, OLLAMA_URL, DEBUG_FACES: see README
 """
 
@@ -52,7 +52,7 @@ from captions import set_cue_text, find_in_cues, replace_in_cues  # noqa: E402
 from styles import style_names, normalize_style  # noqa: E402
 from fonts import font_choices, FONT_CHOICES  # noqa: E402
 from library import export_library  # noqa: E402
-from ranking import OLLAMA_URL, MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP, MIN_CLIPS_FLOOR  # noqa: E402
+from ranking import OLLAMA_URL, MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP  # noqa: E402
 from transcription import whisper_settings  # noqa: E402
 from framing import debug_enabled  # noqa: E402
 
@@ -226,7 +226,7 @@ def health():
         "debug_faces": debug_enabled(), "jobs_running": RUNNING["count"], "jobs_known": len(mf.load_all(OUTPUT_DIR)),
         "max_concurrent_jobs": MAX_CONCURRENT_JOBS, "rerenders_queued": RENDER_QUEUE.qsize(),
         "output_dir": str(OUTPUT_DIR), "libraries_dir": str(LIBRARIES_DIR),
-        "selection": {"min_clip_score": MIN_CLIP_SCORE, "dedup_max_overlap": DEDUP_MAX_OVERLAP, "min_clips_floor": MIN_CLIPS_FLOOR},
+        "selection": {"min_clip_score": MIN_CLIP_SCORE, "dedup_max_overlap": DEDUP_MAX_OVERLAP},
     }
 
 
@@ -236,7 +236,7 @@ def options():
         "styles": style_names(),
         "fonts": font_choices(),
         "preview_watermark_default": PREVIEW_WATERMARK_DEFAULT,
-        "selection": {"min_clip_score": MIN_CLIP_SCORE, "dedup_max_overlap": DEDUP_MAX_OVERLAP, "min_clips_floor": MIN_CLIPS_FLOOR},
+        "selection": {"min_clip_score": MIN_CLIP_SCORE, "dedup_max_overlap": DEDUP_MAX_OVERLAP},
     }
 
 

@@ -70,19 +70,19 @@ class ManifestRoundTripTest(unittest.TestCase):
 
         def edit(mm):
             c = mf.find_clip(mm, "c001")
-            c["cues"][0] = set_cue_text(c["cues"][0], "Arnaud Angeli a dit")
+            c["cues"][0] = set_cue_text(c["cues"][0], "Arnor Angeli a dit")
             c["edited"] = True
             c["style"] = "BOLD"
             c["font"] = "heavy_sans"
             c["in_library"] = True
-            mm["glossary"] = ["Arnaud Angeli"]
+            mm["glossary"] = ["Arnor Angeli"]
         mf.modify(self.tmp, edit)
 
         reloaded = mf.load(self.tmp)
         c = mf.find_clip(reloaded, "c001")
-        self.assertEqual(c["cues"][0]["text"], "Arnaud Angeli a dit")
+        self.assertEqual(c["cues"][0]["text"], "Arnor Angeli a dit")
         self.assertEqual((c["style"], c["font"], c["edited"], c["in_library"]), ("BOLD", "heavy_sans", True, True))
-        self.assertEqual(reloaded["glossary"], ["Arnaud Angeli"])
+        self.assertEqual(reloaded["glossary"], ["Arnor Angeli"])
         self.assertEqual(mf.plan_from_dict(c["plan"]), sample_plan())
         self.assertIsNotNone(reloaded["updated_at"])
         self.assertEqual(json.loads((self.tmp / "job.json").read_text(encoding="utf-8"))["job_id"], "abc123abc123")
@@ -147,7 +147,7 @@ class RerenderTest(unittest.TestCase):
         other_bytes = other.read_bytes()
         plan_before = copy.deepcopy(clip["plan"])
         mtime_before = (self.tmp / "clip_1.mp4").stat().st_mtime_ns
-        clip["cues"][0] = set_cue_text(clip["cues"][0], "Arnaud Angeli ici")
+        clip["cues"][0] = set_cue_text(clip["cues"][0], "Arnor Angeli ici")
         clip["style"] = "KARAOKE"
         clip["font"] = "classic"
 
@@ -172,7 +172,7 @@ class RerenderTest(unittest.TestCase):
         self.assertEqual(clip["render_version"], 2)
         self.assertEqual(clip["render_state"], "done")
         ass_text = (self.tmp / "clip_1.ass").read_text(encoding="utf-8")
-        self.assertIn("Arnaud", ass_text)
+        self.assertIn("Arnor", ass_text)
         self.assertIn("\\k", ass_text)
         # the filtergraph written for the rerender is exactly the stored plan's
         plan = mf.plan_from_dict(plan_before)
