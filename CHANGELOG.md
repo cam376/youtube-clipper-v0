@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.3.0 — 2026-10-08 — client pilot (branch feature/v0.3-client-pilot)
+
+Built on the frozen v0.2.1 engine. YouTube import, Whisper (default
+`small`), face detection, framing, crop smoothing, FFmpeg compatibility,
+caption timing source and output resolution are unchanged.
+
+- **Dynamic clip count.** `select_clips()` replaces the fixed top-5: every
+  candidate with score >= `MIN_CLIP_SCORE` (default 7 on the unchanged 0-10
+  ranking scale) is kept unless it overlaps a stronger kept clip by more than
+  `DEDUP_MAX_OVERLAP` (20 % of the shorter clip). If fewer than
+  `MIN_CLIPS_FLOOR` (3) qualify, the strongest rejected ones are added and
+  flagged `below_threshold`. Candidates are no longer sampled down to 40:
+  Ollama scores them in batches of 40 with the same prompt.
+  `output/<job>/ranking.json` records every candidate and score.
+- **Persistent job manifest** `output/<job_id>/job.json` (source, title,
+  clips with timestamps, score, framing plan, caption cues, style, font,
+  edited / in_library flags, file names, glossary). Jobs reopen after a
+  restart. Rendering is sequential; rerenders go through one worker.
+- **Caption editor** per cue (fixed start/end, editable text) with
+  deterministic retiming; **Find & replace** across all clips with a preview
+  of affected clips; only touched clips rerender from the stored plan.
+- **Subtitle presets** CLEAN (= v0.2.1 look), BOLD, KARAOKE, MINIMAL and
+  **font choices** Clean Sans, Heavy Sans, Condensed, Classic with explicit
+  fallback chains detected from installed fonts (never silent).
+- **Review UI**: dynamic clip cards with score, duration, layout, style,
+  font, badges, Edit captions, style/font Apply, Add to client library,
+  Download HD, Rerender; Jobs list; Glossary.
+- **Static client library export** to `client_libraries/<id>/` with 540x960
+  previews (optional "KIVRO PREVIEW" watermark, `CLIENT_PREVIEW_WATERMARK`
+  default true), posters, a mobile-first page with selection persisted in
+  localStorage, a sticky "N clips selected" bar, clipboard summary and
+  optional WhatsApp link. HD masters untouched; no internal paths exported.
+- New env: `LIBRARIES_DIR`, `CLIENT_PREVIEW_WATERMARK`, `MIN_CLIP_SCORE`,
+  `DEDUP_MAX_OVERLAP`, `MIN_CLIPS_FLOOR`.
+- 53 new tests (71 total). See PILOT_GUIDE.md for the operator workflow.
+
 ## v0.2.1 — 2026-10-07 — release candidate, engine frozen
 
 Validated on real videos (Windows, CPU):

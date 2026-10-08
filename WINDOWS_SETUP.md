@@ -145,6 +145,27 @@ Then open `output\<job_id>\clip_N_faces.jpg`. The title line shows the layout
 (`TWO_PERSON`, `SINGLE_PERSON`, `CENTER_CROP`) and why; coloured boxes are
 face tracks with their id and coverage, yellow/cyan rectangles are the crops.
 
+## 7c. Testing v0.3 (client pilot branch)
+
+```powershell
+cd youtube-clipper-v0
+git fetch origin
+git checkout feature/v0.3-client-pilot
+git pull
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-lock.txt      # nothing new, confirms the pins
+python -m unittest discover -s tests -v   # expect 71 tests OK (70 if playwright is not installed)
+python app\main.py
+```
+Open http://localhost:8000, generate, edit a caption, change a style, mark
+clips, **Export client library**, then preview the folder:
+```powershell
+python -m http.server 8080 --directory "client_libraries\<library_id>"
+```
+Fonts on this machine: Arial, Arial Black, Franklin Gothic Medium and
+Georgia are all part of Windows 10/11, so no font fallback badge should
+appear. The full workflow is in PILOT_GUIDE.md.
+
 ## 8. Troubleshooting
 
 | Symptom | Cause | Fix |

@@ -1,7 +1,9 @@
-# YouTube Clipper v0
+# Kivro (YouTube Clipper) v0.3
 
-Paste a YouTube URL, click **Generate Clips**, get 3-5 vertical (1080x1920)
-subtitled MP4 shorts you can preview and download. Everything runs locally.
+Paste a YouTube URL, click **Generate Clips**, get every strong vertical
+(1080x1920) subtitled short the video contains, polish captions and style per
+clip, pick the ones for the client, export a private static client library.
+Everything runs locally. See **PILOT_GUIDE.md** for the operator workflow.
 
 Only use this on videos you own or have permission to process. The importer
 uses plain, unauthenticated yt-dlp: no cookies, no login, no bypasses.
@@ -12,11 +14,39 @@ uses plain, unauthenticated yt-dlp: no cookies, no login, no bypasses.
 YouTube URL
   -> yt-dlp download (app/youtube.py)
   -> FFmpeg audio extraction + faster-whisper transcript (app/transcription.py)
-  -> 20-60 s candidate windows, scored by Ollama + Qwen (app/ranking.py)
+  -> 20-60 s candidate windows, scored by Ollama + Qwen, kept when score >= MIN_CLIP_SCORE (app/ranking.py)
   -> face analysis per clip: one person / two people / none (app/framing.py)
   -> FFmpeg cut, 9:16 reframe, burned subtitles, H.264/AAC (app/video.py)
-  -> clips served from output/<job_id>/ and shown on the page
+  -> clips + job.json manifest in output/<job_id>/, shown on the page
+  -> edit captions / style / font per clip -> that clip rerenders (app/clipping.py)
+  -> Export client library -> client_libraries/<id>/ static site (app/library.py)
 ```
+
+## Clip selection (v0.3)
+
+The ranking prompt and criteria are unchanged (0-10 per candidate). Selection:
+
+| Setting | Default | Rule |
+|---|---|---|
+| `MIN_CLIP_SCORE` | `7` | a candidate is kept when its score is >= this |
+| `DEDUP_MAX_OVERLAP` | `0.2` | dropped when it overlaps a stronger kept clip by more than 20 % of the shorter one |
+| `MIN_CLIPS_FLOOR` | `3` | if fewer qualify, the strongest rejected ones are added, flagged `below_threshold` |
+
+No top-K anywhere: 3 strong moments give 3 clips, 40 give 40. Clips render
+one at a time. `output/<job_id>/ranking.json` holds every candidate's score.
+
+## Captions, styles, fonts
+
+Caption cues (3-4 words, Whisper word timing) live in `job.json`. Editing a
+cue keeps its start/end; same token count keeps each word's timing, a
+different count spreads words evenly over the cue. Styles: CLEAN (v0.2.1
+look), BOLD, KARAOKE (spoken word in electric blue via ASS \k tags),
+MINIMAL. Fonts: Clean Sans (Arial > Liberation Sans > DejaVu Sans),
+Heavy Sans (Arial Black > Impact > Liberation Sans), Condensed (Franklin
+Gothic Medium > Arial Narrow > Liberation Sans Narrow > DejaVu Sans
+Condensed > Arial), Classic (Georgia > Times New Roman > Liberation Serif >
+DejaVu Serif). The first installed family is used; a fallback is flagged in
+the UI and in `job.json`.
 
 If Ollama is not running, the app falls back to a simple heuristic ranking and
 says so in the status line, so the pipeline still completes.
@@ -66,8 +96,10 @@ First run downloads the Whisper model (`small`, about 500 MB) from Hugging Face.
 ```bash
 python -m unittest discover -s tests -v
 ```
-Renders synthetic clips with the ffmpeg on PATH and checks the complex
-filtergraph side-file option matches that ffmpeg (FFmpeg 6 through 9).
+71 tests: FFmpeg filter-script compatibility, framing classification,
+dynamic selection, captions, styles and fonts, manifest and rerender,
+client library export. Render tests use the ffmpeg on PATH; the static
+client page test runs only if `playwright` is installed.
 
 ## Tuning (environment variables)
 
@@ -82,6 +114,9 @@ filtergraph side-file option matches that ffmpeg (FFmpeg 6 through 9).
 | `HOST` / `PORT`  | `127.0.0.1` / `8000`     | bind address and port                     |
 | `OUTPUT_DIR`     | `./output`               | where jobs and clips are written          |
 | `MAX_CONCURRENT_JOBS` | `1`                 | jobs processed at once; others wait       |
+| `LIBRARIES_DIR`  | `./client_libraries`     | where client libraries are exported       |
+| `CLIENT_PREVIEW_WATERMARK` | `true`         | default for the "KIVRO PREVIEW" mark on exported previews |
+| `MIN_CLIP_SCORE` / `DEDUP_MAX_OVERLAP` / `MIN_CLIPS_FLOOR` | `7` / `0.2` / `3` | see Clip selection |
 
 ## Whisper model policy (v0.2.1)
 
@@ -110,8 +145,14 @@ the same in the status line when the job is done. Compare
 
 ```
 app/
-  main.py           FastAPI server, job table, routes
-  clipping.py       orchestrates the pipeline for one job
+  main.py           FastAPI server, routes, render worker
+  clipping.py       pipeline for one job + rerender of one clip
+  manifest.py       output/<job_id>/job.json read/write
+  captions.py       caption cues, edit retiming, find & replace
+  styles.py         CLEAN / BOLD / KARAOKE / MINIMAL ASS presets
+  fonts.py          font choices and fallback detection
+  library.py        static client library export (previews, page)
+  templates/client_library/   the client page (index.html, style.css, app.js)
   youtube.py        isolated YouTube import provider
   transcription.py  FFmpeg audio extraction + faster-whisper
   ranking.py        candidate windows, Ollama scoring, selection
@@ -119,6 +160,7 @@ app/
   video.py          FFmpeg cut / reframe / subtitles / export
   models/           YuNet face detection model (ONNX, Apache-2.0, from opencv_zoo)
 static/
-  index.html, app.js, style.css
-output/             one folder per job (source, transcript, clips)
+  index.html, app.js, editor.js, export.js, style.css
+output/             one folder per job (source, transcript, job.json, clips)
+client_libraries/   exported static client libraries
 ```

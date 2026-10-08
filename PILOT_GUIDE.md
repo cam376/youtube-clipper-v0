@@ -1,0 +1,117 @@
+# Kivro v0.3 — client pilot workflow
+
+The path from a client's YouTube URL to the list of clips they will post.
+Everything runs locally on Windows; the only thing that leaves your machine
+is a static folder you host for the client.
+
+## 1. Generate
+
+1. `python app\main.py`, open http://localhost:8000.
+2. Paste the client's YouTube URL, click **Generate Clips**.
+3. Kivro scores every 20-60 s candidate window and keeps **all** that reach
+   the quality threshold (default `MIN_CLIP_SCORE=7` on the 0-10 ranking
+   scale). A 27-minute video can return 3 clips or 30. The status line says
+   "N clips ready"; the summary line shows how many candidates were scored,
+   the max and median score, and the threshold.
+4. If fewer than 3 clips qualify, the 3 strongest are kept anyway and marked
+   **below threshold** (dashed border) so you can judge them yourself.
+5. Jobs are persistent: close the server, reopen later, click the job in the
+   **Jobs** list. Everything (clips, edits, styles, selection) is in
+   `output\<job_id>\job.json`.
+
+Tuning for a specific client (PowerShell, before starting the server):
+```powershell
+$env:MIN_CLIP_SCORE = "8"     # stricter
+$env:MIN_CLIP_SCORE = "6.5"   # more permissive
+```
+`output\<job_id>\ranking.json` lists every candidate with its score, sorted,
+so you can see where the threshold falls for this speaker.
+
+## 2. Review and polish
+
+Each clip card shows: preview, Clip NN, Score (0-100), duration, layout
+(split-screen / face-centred / centre crop), subtitle style, font, badges.
+
+- **Edit captions**: one row per caption cue with fixed start/end times.
+  Fix the text, **Save & rerender**. Only that clip rerenders (15-40 s);
+  nothing is re-downloaded, re-transcribed, re-ranked or re-analysed.
+- **Find & replace in all clips**: fix a name once for the whole job.
+  **Preview affected clips** lists which clips and cues match before anything
+  changes; **Replace & rerender** applies it and rerenders only those clips.
+- **Style + Font dropdowns + Apply**: CLEAN / BOLD / KARAOKE / MINIMAL and
+  Clean Sans / Heavy Sans / Condensed / Classic, per clip. Rerenders that clip.
+  A **font fallback** badge means the first-choice family is not installed on
+  this machine and tells you which one was used instead.
+- **Glossary**: names, brands, acronyms for this client, kept with the job.
+  It is the reference spelling for your corrections; Whisper does not read it
+  (see "Whisper and names" below).
+- **Download HD**: the 1080x1920 master.
+- **Rerender**: rebuild the clip from its current captions/style/font.
+
+Rerenders run one at a time in the background; cards show "queued…" /
+"rendering…" and refresh themselves.
+
+## 3. Select and export
+
+1. Click **Add to client library** on the clips the client should see. You
+   can generate 30 and show 22.
+2. **Export client library**: client name, title (prefilled
+   "<Client>'s Content Library"), optional WhatsApp number (digits with
+   country code, e.g. `33612345678`), watermark checkbox (default on), and an
+   optional price per clip (off by default for the pilot).
+3. Kivro writes `client_libraries\<client>-<date>-<id>\` with:
+   - `index.html` — the client page, self-contained
+   - `library.json` — the same client-facing data
+   - `previews\cNN.mp4` — 540x960 web previews with the "KIVRO PREVIEW" mark
+   - `previews\cNN.jpg` — poster frames
+   - `assets\` — style.css, app.js
+   The HD masters in `output\<job_id>\` are not touched. The mapping from
+   library clip numbers to your job clips is in
+   `output\<job_id>\export_<library_id>.json`, never in the exported folder.
+4. Preview it right away from the result box, or standalone:
+   ```powershell
+   python -m http.server 8080 --directory "client_libraries\<library_id>"
+   ```
+   then open http://localhost:8080 on your phone too (same Wi-Fi, use your PC's IP).
+
+## 4. Put it online for the client
+
+The folder is a plain static site. Any of these works, no backend needed:
+
+- **Netlify Drop** (https://app.netlify.com/drop): drag the folder, get a
+  URL in seconds. Rename the site to something like `arnaud-kivro`.
+- **Cloudflare Pages**: create a project, "Upload assets", drop the folder.
+- **GitHub Pages**: push the folder to a repo, enable Pages.
+- Any web host / S3 bucket with static hosting: upload the folder as is.
+
+The page has `noindex`; keep the URL private. Send it to the client with one
+line: "Watch, tap Select on the ones you'd post, then Send my selection."
+
+## 5. Receive the selection
+
+The client taps **Send my selection**. The page shows the summary and copies it:
+
+```
+Hi, here are the clips I'd like:
+
+Clip 02
+Clip 04
+Clip 07
+
+Total selected: 3
+
+Library: Arnaud's Content Library (arnaud-20261008-3ad7c2)
+```
+
+If you entered a WhatsApp number, a **Send on WhatsApp** button opens a chat
+to you with that text. Selections are kept in the client's browser
+(localStorage) so a refresh does not lose them. Map the clip numbers back to
+your HD files with `output\<job_id>\export_<library_id>.json`.
+
+## Whisper and names
+
+Whisper `small` stays the default. faster-whisper supports an
+`initial_prompt` that can bias spelling toward a list of names, but it can
+also make the model repeat or invent text on some audio, so v0.3 does not
+enable it. The glossary is stored for that future step; today the reliable
+tools are the caption editor and Find & replace.
