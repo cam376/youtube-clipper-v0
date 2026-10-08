@@ -1,0 +1,139 @@
+:root {
+  --navy: #0b1530;
+  --navy-2: #13204a;
+  --blue: #2f6bff;
+  --blue-dark: #1f4fd6;
+  --bg: #f6f8fc;
+  --card: #ffffff;
+  --text: #0b1530;
+  --muted: #6b7390;
+  --line: #e3e8f2;
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding-bottom: 96px;
+}
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+
+.hero {
+  background: linear-gradient(160deg, var(--navy) 0%, var(--navy-2) 70%, #1a2d6b 100%);
+  color: #fff;
+  padding: 36px 0 32px;
+}
+.brand { font-weight: 700; letter-spacing: 0.02em; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; opacity: 0.95; }
+.brand .muted { color: rgba(255,255,255,0.65); font-weight: 500; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 4px rgba(47,107,255,0.25); display: inline-block; }
+.hero h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); margin: 18px 0 6px; line-height: 1.15; }
+.hero .sub { margin: 0; font-size: 1.05rem; color: rgba(255,255,255,0.85); }
+.hero .hint { margin: 14px 0 0; color: rgba(255,255,255,0.7); font-size: 0.95rem; max-width: 640px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+  padding: 24px 0;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 2px rgba(11,21,48,0.04);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.card.selected { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(47,107,255,0.18); }
+.card video {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  background: #000;
+  display: block;
+  object-fit: cover;
+}
+.card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; }
+.card-head h3 { margin: 0; font-size: 1rem; }
+.card-head .dur { color: var(--muted); font-size: 0.85rem; }
+.price { color: var(--muted); font-size: 0.9rem; }
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--blue);
+  background: #fff;
+  color: var(--blue);
+  font: inherit;
+  font-weight: 600;
+  padding: 11px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+}
+.btn.primary { background: var(--blue); color: #fff; }
+.btn.primary:hover { background: var(--blue-dark); }
+.btn.ghost { border-color: var(--line); color: var(--text); }
+.btn.select { width: 100%; }
+.card.selected .btn.select { background: var(--blue); color: #fff; }
+
+.bar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  z-index: 20;
+}
+.bar-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bar-text { display: flex; flex-direction: column; }
+.bar-text .muted { font-size: 0.85rem; }
+
+.modal {
+  position: fixed; inset: 0;
+  background: rgba(11,21,48,0.55);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 30;
+  padding: 16px;
+}
+.modal-card {
+  background: #fff;
+  border-radius: 18px;
+  width: 100%;
+  max-width: 520px;
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.modal-card h2 { margin: 0; font-size: 1.2rem; }
+.modal-card textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  resize: vertical;
+  color: var(--text);
+}
+.modal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.modal-actions .btn { flex: 1 1 140px; }
+
+.foot { padding: 20px 16px 40px; font-size: 0.85rem; }
+
+@media (min-width: 720px) {
+  .modal { align-items: center; }
+  .grid { gap: 20px; }
+}
+
+/* the hidden attribute must win over the display rules above */
+[hidden] { display: none !important; }

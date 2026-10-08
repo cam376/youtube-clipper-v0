@@ -3,13 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>YouTube Clipper</title>
+  <title>Kivro</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <main class="container">
-    <h1>Turn YouTube videos into Shorts</h1>
-    <p class="hint">Only use videos you own or have permission to process.</p>
+    <header class="top">
+      <div>
+        <h1>Kivro <span class="muted">· clip studio</span></h1>
+        <p class="hint">Paste a YouTube URL you own or may process. Kivro finds every strong moment, you polish and pick.</p>
+      </div>
+    </header>
 
     <form id="form">
       <input id="url" type="url" placeholder="https://youtube.com/watch?v=..." required autofocus>
@@ -24,9 +28,92 @@
 
     <section id="error" class="error hidden"></section>
 
-    <section id="clips" class="clips"></section>
+    <section id="jobs" class="jobs">
+      <h2>Jobs</h2>
+      <ul id="jobs-list" class="jobs-list"></ul>
+    </section>
+
+    <section id="job" class="job hidden">
+      <div class="job-head">
+        <div>
+          <h2 id="job-title"></h2>
+          <div id="job-meta" class="muted"></div>
+        </div>
+        <div class="job-actions">
+          <button id="btn-findreplace" class="secondary">Find &amp; replace in all clips</button>
+          <button id="btn-glossary" class="secondary">Glossary</button>
+          <button id="btn-export" class="primary">Export client library</button>
+        </div>
+      </div>
+      <div id="job-summary" class="summary"></div>
+      <section id="clips" class="clips"></section>
+    </section>
   </main>
 
+  <!-- Caption editor -->
+  <div id="modal-captions" class="modal hidden">
+    <div class="modal-card wide">
+      <h3 id="captions-title">Edit captions</h3>
+      <p class="muted small">Start and end times are fixed. Change the text, save, and only this clip rerenders.</p>
+      <div id="cues" class="cues"></div>
+      <div class="modal-actions">
+        <button id="captions-save" class="primary">Save &amp; rerender</button>
+        <button id="captions-cancel" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Find & replace -->
+  <div id="modal-fr" class="modal hidden">
+    <div class="modal-card">
+      <h3>Find &amp; replace in all clips</h3>
+      <label>Find <input id="fr-find" type="text" placeholder="Arnault Angeli"></label>
+      <label>Replace with <input id="fr-replace" type="text" placeholder="Arnaud Angeli"></label>
+      <label class="check"><input id="fr-case" type="checkbox"> Case sensitive</label>
+      <div id="fr-preview" class="fr-preview muted small"></div>
+      <div class="modal-actions">
+        <button id="fr-check" class="secondary">Preview affected clips</button>
+        <button id="fr-apply" class="primary" disabled>Replace &amp; rerender affected clips</button>
+        <button id="fr-cancel" class="secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Glossary -->
+  <div id="modal-glossary" class="modal hidden">
+    <div class="modal-card">
+      <h3>Glossary</h3>
+      <p class="muted small">Names, brands and acronyms for this client, one per line. Kept with the job as the reference spelling; corrections stay manual (captions editor or Find &amp; replace).</p>
+      <textarea id="glossary-text" rows="8" placeholder="Arnaud Angeli&#10;GoHighLevel&#10;ClickFunnels"></textarea>
+      <div class="modal-actions">
+        <button id="glossary-save" class="primary">Save</button>
+        <button id="glossary-cancel" class="secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export -->
+  <div id="modal-export" class="modal hidden">
+    <div class="modal-card">
+      <h3>Export client library</h3>
+      <p id="export-count" class="muted small"></p>
+      <label>Client name <input id="ex-client" type="text" placeholder="Arnaud"></label>
+      <label>Library title <input id="ex-title" type="text" placeholder="Arnaud's Content Library"></label>
+      <label>WhatsApp number (optional, digits with country code) <input id="ex-whatsapp" type="text" placeholder="33612345678"></label>
+      <label class="check"><input id="ex-watermark" type="checkbox" checked> "Kivro Preview" watermark on previews</label>
+      <label class="check"><input id="ex-showprice" type="checkbox"> Show a price per clip</label>
+      <label id="ex-price-row" class="hidden">Price per clip (EUR) <input id="ex-price" type="number" step="0.01" min="0" placeholder="15"></label>
+      <div id="export-progress" class="muted small"></div>
+      <div id="export-result" class="export-result hidden"></div>
+      <div class="modal-actions">
+        <button id="export-run" class="primary">Export</button>
+        <button id="export-cancel" class="secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/app.js"></script>
+  <script src="/static/editor.js"></script>
+  <script src="/static/export.js"></script>
 </body>
 </html>

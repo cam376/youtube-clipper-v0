@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{TITLE}}</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="brand"><span class="dot"></span>Kivro <span class="muted">· private library</span></div>
+      <h1 id="title">{{TITLE}}</h1>
+      <p id="subtitle" class="sub"></p>
+      <p class="hint">Watch each clip, tap <strong>Select this clip</strong> on the ones you want to post, then send your selection.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="grid" class="grid" aria-live="polite"></section>
+  </main>
+
+  <div id="bar" class="bar" hidden>
+    <div class="wrap bar-inner">
+      <div class="bar-text"><strong id="count">0 clips selected</strong><span id="total" class="muted"></span></div>
+      <button id="send" class="btn primary">Send my selection</button>
+    </div>
+  </div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card">
+      <h2>Your selection</h2>
+      <textarea id="summary" readonly rows="9"></textarea>
+      <div class="modal-actions">
+        <button id="copy" class="btn primary">Copy to clipboard</button>
+        <a id="whatsapp" class="btn ghost" target="_blank" rel="noopener" hidden>Send on WhatsApp</a>
+        <button id="close" class="btn ghost">Close</button>
+      </div>
+      <p id="copied" class="muted small" hidden>Copied. Paste it in your reply to us.</p>
+    </div>
+  </div>
+
+  <footer class="foot wrap"><span class="muted">Previews are for selection only. Final files are delivered after your choice.</span></footer>
+
+  <script id="library-data" type="application/json">{{LIBRARY_JSON}}</script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
