@@ -97,13 +97,16 @@ def main(argv):
             if r.get("method") == "fallback":
                 why.append("fallback landed on the original window end")
             print(f"{'':6}  why 40s: " + "; ".join(why))
-        if only or equals or r.get("method") != "semantic":
+        if only or equals or r.get("method") != "semantic" or r.get("llm_calls"):
             if transcript:
                 nw, nt = punctuation_stats(words, c["start"], c["start"] + CLIP_HARD_MAX_SECONDS)
                 print(f"{'':6}  window words {nw}, with terminal punctuation {nt}")
                 for e in cands:
                     mark = "<== chosen" if abs(e["time"] - final_end) < 0.05 else ""
                     print(f"{'':6}    {e['id']:<4} +{e['rel']:5.1f}s  {'sentence-end' if e['terminal'] else 'boundary    '}  pause {e['pause']:4.1f}  ...{e['text'][-50:]} {mark}")
+                for j in r.get("judgements") or []:
+                    print(f"{'':6}    judged {j['id']:<4} {j['verdict']:<9} [{j['source']}] {str(j.get('reason', ''))[:70]}"
+                          + (f"  raw={str(j.get('raw'))[:60]!r}" if j.get("raw") else ""))
                 pre, post = words_around(words, final_end)
                 print(f"{'':6}  ends with: ...{pre}")
                 print(f"{'':6}  next words: {post}...")

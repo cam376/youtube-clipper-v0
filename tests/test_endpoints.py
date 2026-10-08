@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 
 import endpoints  # noqa: E402
-from endpoints import candidate_endpoints, choose_endpoint_heuristic, refine_end, text_between  # noqa: E402
+from endpoints import candidate_endpoints, choose_endpoint_heuristic, refine_end, text_between, COMPLETE, CONTINUES, UNPARSED  # noqa: E402
 from ranking import dedupe_overlaps  # noqa: E402
 
 
@@ -85,10 +85,12 @@ class RefineEndTest(unittest.TestCase):
         return match[0]
 
     def _refine_with_model_choice(self, suffix, start=100.0, end=140.0):
-        """Simulate Qwen choosing the endpoint whose transcript ends with `suffix`."""
+        """Simulate Qwen judging COMPLETE exactly at the candidate whose transcript ends with `suffix`."""
         target = self._endpoint_ending_with(suffix, start)
-        with mock.patch.object(endpoints, "_ollama_choose", return_value=(target["id"], "idea resolved")):
-            return refine_end(start, end, self.words, self.segs), target
+
+        def judge(hook, body, next_text, pause):
+            return (COMPLETE if body.endswith(suffix) else CONTINUES), "idea resolved", "{}"
+        return refine_end(start, end, self.words, self.segs, judge=judge), target
 
     def test_1_forty_second_candidate_ends_where_idea_concludes(self):
         rec, target = self._refine_with_model_choice("différence.")      # idea complete at ~27 s
@@ -108,8 +110,9 @@ class RefineEndTest(unittest.TestCase):
 
     def test_3_sentence_crossing_forty_is_not_cut_mid_sentence(self):
         # The old window ended at exactly 40 s, inside "Je réponds ... créée."
-        with mock.patch.object(endpoints, "_ollama_choose", side_effect=RuntimeError("no ollama")):
-            rec = refine_end(100.0, 140.0, self.words, self.segs)
+        def down(*a):
+            raise RuntimeError("no ollama")
+        rec = refine_end(100.0, 140.0, self.words, self.segs, judge=down)
         self.assertEqual(rec["method"], "fallback")
         self.assertTrue(rec["endpoint_terminal"])
         last_word = [w for w in self.words if w["end"] <= rec["final_end"]][-1]["word"]
@@ -125,8 +128,9 @@ class RefineEndTest(unittest.TestCase):
     def test_5_rambling_passage_is_capped_by_the_policy(self):
         rambling = [("et puis on continue sans jamais finir la phrase parce que ça parle " * 2, 0.2) for _ in range(20)]
         words, segs = transcript(rambling)
-        with mock.patch.object(endpoints, "_ollama_choose", side_effect=RuntimeError("no ollama")):
-            rec = refine_end(100.0, 140.0, words, segs)
+        def down(*a):
+            raise RuntimeError("no ollama")
+        rec = refine_end(100.0, 140.0, words, segs, judge=down)
         self.assertLessEqual(rec["final_duration"], 75)
         self.assertLessEqual(rec["final_duration"], 60 + 0.01)   # no sentence end at all -> last boundary before target max
         self.assertIn("no sentence end", rec["endpoint_reason"])
@@ -141,11 +145,10 @@ class RefineEndTest(unittest.TestCase):
         durations = {self._refine_with_model_choice(s)[0]["final_duration"] for s in ("ligne.", "différence.", "pour les prix.")}
         self.assertEqual(len(durations), 3)
 
-    def test_model_answer_outside_the_list_falls_back(self):
-        with mock.patch.object(endpoints, "_ollama_choose", return_value=("E99", "made up")):
-            rec = refine_end(100.0, 140.0, self.words, self.segs)
+    def test_unparsable_model_answers_fall_back(self):
+        rec = refine_end(100.0, 140.0, self.words, self.segs, judge=lambda *a: (UNPARSED, "garbage", "E4"))
         self.assertEqual(rec["method"], "fallback")
-        self.assertIn("not a listed endpoint", rec["endpoint_reason"])
+        self.assertIn("no candidate judged COMPLETE", rec["endpoint_reason"])
         self.assertIn(rec["final_end"], [e["time"] for e in candidate_endpoints(self.words, self.segs, 100.0)])
 
     def test_no_boundary_in_range_keeps_original_end(self):

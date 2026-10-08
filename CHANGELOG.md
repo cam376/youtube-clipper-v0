@@ -69,6 +69,22 @@ caption timing source and output resolution are unchanged.
   after it, else the last boundary before 60 s. The overlap rule runs again
   afterwards. Every clip's `refinement` record (original/final start, end,
   durations, endpoint, reason, method) is in job.json.
+- Natural endings, second pass (pilot run: Qwen answered E4 for 22/22
+  clips). Cause: the answer template in the prompt read
+  `{"endpoint": "E4", ...}` and a 3B model in JSON mode copied it; the
+  validator accepted any listed id. The model no longer chooses an id at
+  all. Candidates are judged one at a time in time order with the hook, the
+  text up to the cut and the next ~25 words, answering COMPLETE or
+  CONTINUES; the first COMPLETE wins (one look-ahead for a longer pause
+  within 4 s). Deterministic guards reject, without a model call, cuts on a
+  dangling word, a question whose answer follows, a setup sentence
+  ("laisse-moi te dire une chose", "voici pourquoi", "il y a trois
+  raisons"...), a colon, a non-terminal boundary without a >= 1 s pause, and
+  cuts whose next words start with a continuation ("et", "donc", "parce
+  que", "par exemple", "premièrement"...). Parsing accepts only an explicit
+  verdict; anything else is UNPARSED and never selects. Every judgement
+  (guard reason or model verdict, raw answer) is stored per clip in
+  job.json and printed by `endpoint_report.py`.
 - `app/framing_report.py` prints a clip's per-sample framing diagnostics;
   diagnostics now include the face position inside the crop and the number
   of samples where the crop was clamped at a source edge.

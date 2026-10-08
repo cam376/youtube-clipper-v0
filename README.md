@@ -34,9 +34,12 @@ The ranking prompt and criteria are unchanged (0-10 per candidate). Selection:
 No top-K and no minimum: 0 strong moments give 0 clips, 3 give 3, 40 give 40.
 
 Each selected clip keeps its start and gets a natural end: sentence ends,
-segment ends and pauses after the start are offered to Qwen with inline
-markers, which picks the earliest one that resolves the idea
-(`app/endpoints.py`). Policy: `CLIP_MIN_SECONDS` 15, `CLIP_TARGET_MAX_SECONDS`
+segment ends and pauses after the start are candidates; deterministic
+continuity guards drop obvious non-endings (dangling connector, question
+before its answer, setup sentence, next words starting with "et", "donc",
+"parce que"...); Qwen then judges the remaining candidates one by one,
+COMPLETE or CONTINUES, with the hook, the text up to the cut and the next
+words, and the first COMPLETE wins (`app/endpoints.py`). Policy: `CLIP_MIN_SECONDS` 15, `CLIP_TARGET_MAX_SECONDS`
 60 (quality boundary: the first sentence end after it is still allowed),
 `CLIP_HARD_MAX_SECONDS` 75. Without Ollama the last sentence end before 60 s
 is used. The decision is stored per clip under `refinement` in job.json. Clips render
