@@ -378,8 +378,18 @@ def _single_region(a: FaceAnalysis, tr: Track) -> tuple[Region, dict]:
     y = float(np.clip(cy - crop_h * 0.4, 0, max(H - crop_h, 0)))
     mx, _, mw, _ = tr.median_box()
     geometric_x = round((W - crop_w) / 2, 1)
+    right_limit = max(W - crop_w, 0)
+    # Samples where the face is so close to a source edge that the crop
+    # cannot centre it (nothing to the left/right of the frame to show).
+    clamped_left = int(np.sum(centres - crop_w / 2 < 0))
+    clamped_right = int(np.sum(centres - crop_w / 2 > right_limit))
+    # Face position inside the rendered crop, as a fraction of crop width
+    # (0.5 = centred). Uses the smoothed crop actually rendered.
+    face_pos = (centres - xs) / crop_w
     diag = {
         "primary_track": tr.id,
+        "source_width": W,
+        "source_height": H,
         "coverage": round(tr.coverage(n), 3),
         "span": round(tr.span(n), 3),
         "median_face_x": round(float(mx + mw / 2), 1),
@@ -388,6 +398,11 @@ def _single_region(a: FaceAnalysis, tr: Track) -> tuple[Region, dict]:
         "geometric_centre_used": False,
         "detected_samples": len(tr.boxes),
         "fallback_samples": n - len(tr.boxes),          # held / interpolated from the track
+        "clamped_left_samples": clamped_left,
+        "clamped_right_samples": clamped_right,
+        "face_in_crop_min": round(float(face_pos.min()), 3),
+        "face_in_crop_median": round(float(np.median(face_pos)), 3),
+        "face_in_crop_max": round(float(face_pos.max()), 3),
         "target_crop_x": [round(float(v), 1) for v in target],
         "smoothed_crop_x": [round(float(v), 1) for v in xs],
         "crop_x_min": round(float(xs.min()), 1),
@@ -500,10 +515,15 @@ def plan_layout(a: FaceAnalysis) -> FramePlan:
 
 
 def _single_note(d: dict) -> str:
+    clamp = ""
+    if d.get("clamped_left_samples") or d.get("clamped_right_samples"):
+        clamp = (f", crop clamped at source edge for {d['clamped_left_samples']} left / "
+                 f"{d['clamped_right_samples']} right samples")
     return (f"primary track #{d['primary_track']} coverage {d['coverage']:.0%} span {d['span']:.0%}, "
             f"median face x {d['median_face_x']:.0f}, crop x {d['crop_x_min']:.0f}-{d['crop_x_max']:.0f} "
-            f"(geometric centre would be {d['geometric_centre_x']:.0f}), "
-            f"{d['fallback_samples']} of {d['detected_samples'] + d['fallback_samples']} samples held/interpolated")
+            f"(geometric centre would be {d['geometric_centre_x']:.0f}), face at "
+            f"{d['face_in_crop_min']:.0%}-{d['face_in_crop_max']:.0%} of crop width (median {d['face_in_crop_median']:.0%}), "
+            f"{d['fallback_samples']} of {d['detected_samples'] + d['fallback_samples']} samples held/interpolated{clamp}")
 
 
 # --------------------------------------------------------------------------- #

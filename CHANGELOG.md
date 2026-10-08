@@ -43,7 +43,11 @@ caption timing source and output resolution are unchanged.
   summarises them, and the DEBUG_FACES sheet marks the primary track, crop
   window and crop centre. Split-screen code is unchanged.
 - Tests: `tests/test_single_person_framing.py` (right-side speaker, dropout,
-  leading gap, primary-track choice, rendered output face position).
+  leading gap, primary-track choice, rendered output face position within
+  420-660 px of the 1080 px output with the mean within 60 px of centre).
+- `app/framing_report.py` prints a clip's per-sample framing diagnostics;
+  diagnostics now include the face position inside the crop and the number
+  of samples where the crop was clamped at a source edge.
 - See PILOT_GUIDE.md for the operator workflow.
 
 ## v0.2.1 — 2026-10-07 — release candidate, engine frozen

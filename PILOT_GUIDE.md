@@ -121,8 +121,19 @@ per-sample target and smoothed crop x under `plan.diagnostics`. With
 box labelled PRIMARY, the crop window and its centre line; a grey box
 labelled GEOMETRIC CENTRE appears only on centre-crop clips.
 
-If a clip is framed on the wrong face, that note shows which track won and
-why; send it along with the clip when reporting.
+The note also gives the face position inside the rendered crop as a
+percentage of the crop width (50 % = centred) and says if the crop was
+clamped at a source edge, which happens when the face is closer to the edge
+of the 16:9 frame than half the crop width: there are no more pixels to show
+on that side, so the face cannot be centred without zooming in.
+
+For a second-by-second view of one clip:
+```powershell
+python app\framing_report.py output\<job_id>\job.json c001
+```
+It prints, per sample, the target crop x, the rendered crop x, the face
+position inside the crop and flags for CLAMPED-LEFT / CLAMPED-RIGHT /
+OFF-CENTRE. Paste that output when reporting a framing problem.
 
 ## Whisper and names
 

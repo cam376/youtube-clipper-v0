@@ -68,6 +68,8 @@ class PlanLevelTest(unittest.TestCase):
         self.assertEqual(d["primary_track"], 0)
         self.assertAlmostEqual(d["median_face_x"], 1010, delta=1)
         self.assertEqual(d["fallback_samples"], 0)
+        self.assertEqual(d["clamped_right_samples"], 0)
+        self.assertAlmostEqual(d["face_in_crop_median"], 0.5, places=3)
         self.assertEqual(len(d["smoothed_crop_x"]), n)
         self.assertTrue(all(abs(x - expected) < 3 for x in d["smoothed_crop_x"]))
 
@@ -171,19 +173,30 @@ class EndToEndTest(unittest.TestCase):
         self.assertFalse(d["geometric_centre_used"])
 
     def test_rendered_output_keeps_the_face_near_centre(self):
+        # The speaker stays on the right of the 16:9 source for the whole clip.
+        # In the rendered 1080x1920 output the face must sit in the centre
+        # band (420-660 px of 1080), with the average close to 540, at every
+        # sampled time. Uses whatever ffmpeg is on PATH (FFmpeg 9 on the
+        # Windows machine), so this also covers the -/filter_complex path.
         from video import render_clip
         out = render_clip(self.source, 0.0, 24.0, None, self.tmp / "out.mp4", self.plan)
         det = framing._Detector(1080, 1920)
-        for tt in (1.0, 6.0, 10.5, 15.0, 22.0):
+        positions = []
+        for tt in (1.0, 3.0, 6.0, 8.0, 13.0, 15.0, 18.0, 22.0):
             png = self.tmp / f"f{tt}.png"
             subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", str(tt), "-i", str(out),
                             "-frames:v", "1", str(png)], check=True)
             faces = det.detect(cv2.imread(str(png)))
-            if 9.0 <= tt < 12.0:
-                continue                                   # face hidden in the source
             self.assertTrue(faces, f"no face in output at {tt}s")
             cx = faces[0][0] + faces[0][2] / 2
-            self.assertAlmostEqual(cx, 540, delta=150, msg=f"face x in output at {tt}s")
+            positions.append(cx)
+            self.assertGreaterEqual(cx, 420, f"face too far left in output at {tt}s: {cx:.0f}")
+            self.assertLessEqual(cx, 660, f"face too far right in output at {tt}s: {cx:.0f}")
+        mean = sum(positions) / len(positions)
+        self.assertAlmostEqual(mean, 540, delta=60, msg=f"mean face x {mean:.0f}, positions {positions}")
+        d = self.plan.diagnostics
+        self.assertAlmostEqual(d["face_in_crop_median"], 0.5, delta=0.08)
+        self.assertEqual(d["clamped_right_samples"], 0)
 
 
 if __name__ == "__main__":
