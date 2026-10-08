@@ -16,7 +16,13 @@ is a static folder you host for the client.
 4. There is no minimum: a video with no moment above the threshold returns
    0 clips. Lower `MIN_CLIP_SCORE` only if you judge the rejected candidates
    in `ranking.json` to be genuinely strong.
-5. Jobs are persistent: close the server, reopen later, click the job in the
+5. Each clip keeps the hook Kivro chose and ends where the idea finishes:
+   the card shows the real duration (21 s, 34 s, 52 s ...). In `job.json`,
+   each clip's `refinement` block records the original 40 s window, the
+   chosen endpoint, the reason, and whether Qwen chose it (`semantic`) or
+   the sentence-boundary fallback did. Tune with `CLIP_TARGET_MAX_SECONDS`
+   (default 60) if a client wants shorter or longer Reels.
+6. Jobs are persistent: close the server, reopen later, click the job in the
    **Jobs** list. Everything (clips, edits, styles, selection) is in
    `output\<job_id>\job.json`.
 

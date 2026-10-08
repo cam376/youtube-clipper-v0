@@ -31,7 +31,15 @@ The ranking prompt and criteria are unchanged (0-10 per candidate). Selection:
 | `MIN_CLIP_SCORE` | `7` | a candidate is kept when its score is >= this |
 | `DEDUP_MAX_OVERLAP` | `0.2` | dropped when it overlaps a stronger kept clip by more than 20 % of the shorter one |
 
-No top-K and no minimum: 0 strong moments give 0 clips, 3 give 3, 40 give 40. Clips render
+No top-K and no minimum: 0 strong moments give 0 clips, 3 give 3, 40 give 40.
+
+Each selected clip keeps its start and gets a natural end: sentence ends,
+segment ends and pauses after the start are offered to Qwen with inline
+markers, which picks the earliest one that resolves the idea
+(`app/endpoints.py`). Policy: `CLIP_MIN_SECONDS` 15, `CLIP_TARGET_MAX_SECONDS`
+60 (quality boundary: the first sentence end after it is still allowed),
+`CLIP_HARD_MAX_SECONDS` 75. Without Ollama the last sentence end before 60 s
+is used. The decision is stored per clip under `refinement` in job.json. Clips render
 one at a time. `output/<job_id>/ranking.json` holds every candidate's score.
 
 ## Captions, styles, fonts
@@ -116,6 +124,7 @@ client page test runs only if `playwright` is installed.
 | `LIBRARIES_DIR`  | `./client_libraries`     | where client libraries are exported       |
 | `CLIENT_PREVIEW_WATERMARK` | `true`         | default for the "KIVRO PREVIEW" mark on exported previews |
 | `MIN_CLIP_SCORE` / `DEDUP_MAX_OVERLAP` | `7` / `0.2` | see Clip selection |
+| `CLIP_MIN_SECONDS` / `CLIP_TARGET_MAX_SECONDS` / `CLIP_HARD_MAX_SECONDS` | `15` / `60` / `75` | natural ending policy |
 
 ## Whisper model policy (v0.2.1)
 
@@ -155,6 +164,7 @@ app/
   youtube.py        isolated YouTube import provider
   transcription.py  FFmpeg audio extraction + faster-whisper
   ranking.py        candidate windows, Ollama scoring, selection
+  endpoints.py      natural clip endings (keeps the hook, refines the end)
   framing.py        face detection, tracking, layout choice, crop smoothing
   video.py          FFmpeg cut / reframe / subtitles / export
   models/           YuNet face detection model (ONNX, Apache-2.0, from opencv_zoo)

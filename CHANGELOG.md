@@ -56,6 +56,19 @@ caption timing source and output resolution are unchanged.
   handoff so the crop steps at the cut instead of panning across it.
   Diagnostics record the followed/rejected tracks, per-sample position
   source and visible-but-not-followed faces; `framing_report.py` prints them.
+- **Natural clip endings.** Candidate windows stopped at the first Whisper
+  segment end past `TARGET_LEN = 40` and the thinning kept the window closest
+  to 40 s, so every clip was ~40 s and ended wherever that boundary fell. The
+  start (hook) is unchanged; after selection `endpoints.refine_end()` picks
+  the end on a real transcript boundary: Qwen receives the passage with
+  [E1]..[En] markers at sentence ends / segment ends / pauses between
+  `CLIP_MIN_SECONDS` (15) and `CLIP_TARGET_MAX_SECONDS` (60), plus the first
+  sentence end after 60 s (never past `CLIP_HARD_MAX_SECONDS`, 75), and
+  returns the earliest endpoint that resolves the idea. Fallback (no Ollama
+  or an unlisted answer): last sentence end before 60 s, else the first
+  after it, else the last boundary before 60 s. The overlap rule runs again
+  afterwards. Every clip's `refinement` record (original/final start, end,
+  durations, endpoint, reason, method) is in job.json.
 - `app/framing_report.py` prints a clip's per-sample framing diagnostics;
   diagnostics now include the face position inside the crop and the number
   of samples where the crop was clamped at a source edge.

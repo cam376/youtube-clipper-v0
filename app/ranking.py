@@ -201,6 +201,25 @@ def overlap_fraction(a: dict, b: dict) -> float:
     return inter / max(shorter, 1e-6)
 
 
+def dedupe_overlaps(clips: list[dict], max_overlap: float | None = None) -> tuple[list[dict], list[dict]]:
+    """
+    The overlap rule of select_clips applied again to clips whose ends were
+    refined: strongest first, a clip overlapping an already kept clip by more
+    than max_overlap of the shorter one is dropped. Returns (kept in video
+    order, dropped).
+    """
+    if max_overlap is None:
+        max_overlap = DEDUP_MAX_OVERLAP
+    kept, dropped = [], []
+    for c in sorted(clips, key=lambda c: (c["score"], -c["start"]), reverse=True):
+        if any(overlap_fraction(c, o) > max_overlap for o in kept):
+            dropped.append(c)
+        else:
+            kept.append(c)
+    kept.sort(key=lambda c: c["start"])
+    return kept, dropped
+
+
 def select_clips(cands: list[dict], min_score: float | None = None,
                  max_overlap: float | None = None) -> list[dict]:
     """

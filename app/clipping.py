@@ -27,7 +27,8 @@ log = logging.getLogger("clipper.clipping")
 import manifest as mf
 from youtube import download_youtube_video
 from transcription import extract_audio, transcribe
-from ranking import build_candidates, rank_candidates, select_clips, MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP
+from ranking import build_candidates, rank_candidates, select_clips, dedupe_overlaps, MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP
+from endpoints import refine_end, text_between, CLIP_MIN_SECONDS, CLIP_TARGET_MAX_SECONDS, CLIP_HARD_MAX_SECONDS
 from video import render_clip
 from captions import build_cues
 from styles import render_ass, DEFAULT_STYLE, normalize_style
@@ -69,6 +70,7 @@ def _clip_record(i: int, c: dict, plan, cues: list[dict], ass_info: dict, out: P
         "duration": round(c["end"] - c["start"], 1),
         "score": c.get("score"),
         "text": c["text"],
+        "refinement": c.get("refinement"),
         "layout": layout,
         "layout_note": plan.note if plan else "",
         "plan": mf.plan_to_dict(plan),
@@ -127,6 +129,18 @@ def run_job(job: dict, url: str, job_dir: Path, public_prefix: str) -> None:
         ranked, note = rank_candidates(cands)
         job["ranking_note"] = note
         chosen = select_clips(ranked)
+
+        # Natural endings: keep each hook/start, refine only the end on real
+        # transcript boundaries, then apply the overlap rule again.
+        job["detail"] = "finding natural endings"
+        for c in chosen:
+            rec = refine_end(c["start"], c["end"], transcript["words"], transcript["segments"])
+            c["end"] = rec["final_end"]
+            c["text"] = text_between(transcript["words"], c["start"], c["end"]) or c["text"]
+            c["refinement"] = rec
+            log.info("clip %.1f-%.1f (%.1fs) -> end %.1f (%.1fs) [%s] %s", rec["original_start"], rec["original_end"],
+                     rec["original_duration"], rec["final_end"], rec["final_duration"], rec["method"], rec["endpoint_reason"])
+        chosen, dropped_after_refine = dedupe_overlaps(chosen)
         scores = sorted((c["score"] for c in ranked), reverse=True)
         manifest["ranking"] = {"note": note, "candidates": len(ranked),
                                "score_max": scores[0] if scores else None,
@@ -135,6 +149,16 @@ def run_job(job: dict, url: str, job_dir: Path, public_prefix: str) -> None:
             "min_clip_score": MIN_CLIP_SCORE,
             "dedup_max_overlap": DEDUP_MAX_OVERLAP,
             "accepted": len(chosen),
+            "dropped_after_end_refinement": [{"start": d["start"], "end": d["end"], "score": d["score"]} for d in dropped_after_refine],
+            "end_refinement": {
+                "clip_min_seconds": CLIP_MIN_SECONDS,
+                "clip_target_max_seconds": CLIP_TARGET_MAX_SECONDS,
+                "clip_hard_max_seconds": CLIP_HARD_MAX_SECONDS,
+                "semantic": sum(1 for c in chosen if c["refinement"]["method"] == "semantic"),
+                "fallback": sum(1 for c in chosen if c["refinement"]["method"] == "fallback"),
+                "unchanged": sum(1 for c in chosen if c["refinement"]["method"] == "unchanged"),
+                "durations": [c["refinement"]["final_duration"] for c in chosen],
+            },
         }
         (job_dir / "ranking.json").write_text(json.dumps(
             sorted(ranked, key=lambda c: c["score"], reverse=True), indent=1, ensure_ascii=False), encoding="utf-8")
