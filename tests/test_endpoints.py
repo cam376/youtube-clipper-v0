@@ -101,7 +101,7 @@ class RefineEndTest(unittest.TestCase):
         self.assertEqual(rec["original_duration"], 40.0)
 
     def test_2_idea_continuing_past_forty_extends_to_its_conclusion(self):
-        rec, target = self._refine_with_model_choice("prix.")            # last sentence, ends after 40 s
+        rec, target = self._refine_with_model_choice("pour les prix.")            # last sentence, ends after 40 s
         self.assertGreater(target["rel"], 40)
         self.assertEqual(rec["final_end"], target["time"])
         self.assertGreater(rec["final_duration"], 40)
@@ -132,13 +132,13 @@ class RefineEndTest(unittest.TestCase):
         self.assertIn("no sentence end", rec["endpoint_reason"])
 
     def test_6_start_never_changes(self):
-        for suffix in ("ligne.", "différence.", "prix."):
+        for suffix in ("ligne.", "différence.", "pour les prix."):
             rec, _ = self._refine_with_model_choice(suffix)
             self.assertEqual(rec["final_start"], 100.0)
             self.assertEqual(rec["original_start"], 100.0)
 
     def test_7_clips_get_different_durations(self):
-        durations = {self._refine_with_model_choice(s)[0]["final_duration"] for s in ("ligne.", "différence.", "prix.")}
+        durations = {self._refine_with_model_choice(s)[0]["final_duration"] for s in ("ligne.", "différence.", "pour les prix.")}
         self.assertEqual(len(durations), 3)
 
     def test_model_answer_outside_the_list_falls_back(self):
