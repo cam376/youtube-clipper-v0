@@ -30,7 +30,7 @@
     const cues = [...cuesBox.querySelectorAll("input")].map((inp) => ({ text: inp.value }));
     $("captions-save").disabled = true;
     try {
-      const res = await K.api("PUT", `/api/jobs/${K.currentJobId}/clips/${editing.id}/captions`, { cues });
+      const res = await K.api("PUT", `api/jobs/${K.currentJobId}/clips/${editing.id}/captions`, { cues });
       modal.classList.add("hidden");
       if (!res.changed_cues) K.showError("No caption text changed.");
       K.poll();
@@ -59,7 +59,7 @@
 
   $("fr-check").addEventListener("click", async () => {
     try {
-      const res = await K.api("POST", `/api/jobs/${K.currentJobId}/find-replace`, {
+      const res = await K.api("POST", `api/jobs/${K.currentJobId}/find-replace`, {
         find: $("fr-find").value, replace: $("fr-replace").value, apply: false, case_sensitive: $("fr-case").checked,
       });
       if (!res.matches.length) {
@@ -76,7 +76,7 @@
   $("fr-apply").addEventListener("click", async () => {
     $("fr-apply").disabled = true;
     try {
-      const res = await K.api("POST", `/api/jobs/${K.currentJobId}/find-replace`, {
+      const res = await K.api("POST", `api/jobs/${K.currentJobId}/find-replace`, {
         find: $("fr-find").value, replace: $("fr-replace").value, apply: true, case_sensitive: $("fr-case").checked,
       });
       $("fr-preview").textContent = `Replaced ${res.replaced} occurrence(s) in ${res.affected_clips} clip(s). Rerendering…`;
@@ -94,7 +94,7 @@
   $("glossary-save").addEventListener("click", async () => {
     const terms = $("glossary-text").value.split("\n").map((t) => t.trim()).filter(Boolean);
     try {
-      await K.api("PUT", `/api/jobs/${K.currentJobId}/glossary`, { terms });
+      await K.api("PUT", `api/jobs/${K.currentJobId}/glossary`, { terms });
       gl.classList.add("hidden");
       K.poll();
     } catch (err) { K.showError(err.message); }

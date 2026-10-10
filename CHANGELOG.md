@@ -85,6 +85,11 @@ caption timing source and output resolution are unchanged.
   verdict; anything else is UNPARSED and never selects. Every judgement
   (guard reason or model verdict, raw answer) is stored per clip in
   job.json and printed by `endpoint_report.py`.
+- Sub-path hosting: every URL the page and the API emit is now relative,
+  and `ROOT_PATH` feeds FastAPI's docs links, so the app runs unchanged at
+  http://localhost:8000/ and under a prefix such as
+  https://settermonster.com/vezly.ai/ behind a prefix-stripping proxy
+  (DEPLOYMENT.md 8b, Caddy and nginx examples).
 - `app/framing_report.py` prints a clip's per-sample framing diagnostics;
   diagnostics now include the face position inside the crop and the number
   of samples where the crop was clamped at a source edge.

@@ -124,6 +124,7 @@ client page test runs only if `playwright` is installed.
 | `HOST` / `PORT`  | `127.0.0.1` / `8000`     | bind address and port                     |
 | `OUTPUT_DIR`     | `./output`               | where jobs and clips are written          |
 | `MAX_CONCURRENT_JOBS` | `1`                 | jobs processed at once; others wait       |
+| `ROOT_PATH`      | empty                    | URL prefix when served under a sub-path (see DEPLOYMENT.md 8b) |
 | `LIBRARIES_DIR`  | `./client_libraries`     | where client libraries are exported       |
 | `CLIENT_PREVIEW_WATERMARK` | `true`         | default for the "KIVRO PREVIEW" mark on exported previews |
 | `MIN_CLIP_SCORE` / `DEDUP_MAX_OVERLAP` | `7` / `0.2` | see Clip selection |

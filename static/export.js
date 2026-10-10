@@ -27,7 +27,7 @@
     $("export-run").disabled = true;
     $("export-progress").textContent = "Starting…";
     try {
-      const st = await K.api("POST", `/api/jobs/${K.currentJobId}/export-library`, {
+      const st = await K.api("POST", `api/jobs/${K.currentJobId}/export-library`, {
         client_name: $("ex-client").value,
         title: $("ex-title").value || null,
         show_price: $("ex-showprice").checked,
@@ -45,7 +45,7 @@
   });
 
   async function track(exportId) {
-    const st = await K.api("GET", `/api/exports/${exportId}`);
+    const st = await K.api("GET", `api/exports/${exportId}`);
     if (st.stage === "exporting") {
       $("export-progress").textContent = `Exporting… ${st.detail || ""}`;
       pollTimer = setTimeout(() => track(exportId), 1500);

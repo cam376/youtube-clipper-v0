@@ -110,9 +110,9 @@ class ManifestRoundTripTest(unittest.TestCase):
         m = mf.new_manifest("abc123abc123", "u")
         m["clips"] = [{"id": "c001", "plan": {"layout": "x"}, "files": {"mp4": "clip_1.mp4", "ass": "clip_1.ass"},
                        "render_version": 3, "in_library": True}]
-        v = mf.public_view(m, "/output/abc123abc123")
+        v = mf.public_view(m, "output/abc123abc123")
         self.assertNotIn("plan", v["clips"][0])
-        self.assertEqual(v["clips"][0]["url"], "/output/abc123abc123/clip_1.mp4?v=3")
+        self.assertEqual(v["clips"][0]["url"], "output/abc123abc123/clip_1.mp4?v=3")
         self.assertEqual((v["clip_count"], v["library_count"]), (1, 1))
 
 

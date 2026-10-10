@@ -39,7 +39,8 @@ ENV PYTHONUNBUFFERED=1 \
     OLLAMA_MODEL=qwen2.5:3b \
     OLLAMA_URL=http://ollama:11434 \
     MAX_CONCURRENT_JOBS=1 \
-    DEBUG_FACES=false
+    DEBUG_FACES=false \
+    ROOT_PATH=""
 
 # /data holds generated clips (OUTPUT_DIR) and the downloaded Whisper model
 # cache (HF_HOME). Mount a volume there so neither is lost on restart.

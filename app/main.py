@@ -8,6 +8,10 @@ Environment (all optional, defaults suit local development):
     PORT                 port (default 8000)
     OUTPUT_DIR           where jobs and clips are written (default ./output)
     LIBRARIES_DIR        where client libraries are exported (default ./client_libraries)
+    ROOT_PATH            URL prefix when served under a sub-path behind a reverse proxy that
+                         strips it (e.g. "/vezly.ai" for https://settermonster.com/vezly.ai/).
+                         All links the app emits are relative, so this only feeds FastAPI's
+                         docs/openapi URLs; leave empty for http://localhost:8000.
     MAX_CONCURRENT_JOBS  jobs processed at the same time (default 1); others wait
     CLIENT_PREVIEW_WATERMARK  default for the export watermark checkbox (default true)
     MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP: see ranking.py
@@ -36,6 +40,7 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8000"))
 MAX_CONCURRENT_JOBS = max(1, int(os.environ.get("MAX_CONCURRENT_JOBS", "1")))
 PREVIEW_WATERMARK_DEFAULT = os.environ.get("CLIENT_PREVIEW_WATERMARK", "true").strip().lower() in ("1", "true", "yes", "on")
+ROOT_PATH = "/" + os.environ.get("ROOT_PATH", "").strip("/") if os.environ.get("ROOT_PATH", "").strip("/") else ""
 
 # Allow `python app/main.py` from anywhere: make sibling modules importable.
 sys.path.insert(0, str(APP_DIR))
@@ -56,7 +61,7 @@ from ranking import OLLAMA_URL, MIN_CLIP_SCORE, DEDUP_MAX_OVERLAP  # noqa: E402
 from transcription import whisper_settings  # noqa: E402
 from framing import debug_enabled  # noqa: E402
 
-app = FastAPI(title="Kivro", version=VERSION)
+app = FastAPI(title="Kivro", version=VERSION, root_path=ROOT_PATH)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 LIBRARIES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -150,7 +155,7 @@ def _clip(m: dict, clip_id: str) -> dict:
 
 
 def _view(job_id: str, m: dict) -> dict:
-    view = mf.public_view(m, f"/output/{job_id}")
+    view = mf.public_view(m, f"output/{job_id}")
     live = JOBS.get(job_id)
     if live:
         for k in ("stage", "status", "detail", "error", "transcription_note", "ranking_note", "framing_warning"):
@@ -225,7 +230,7 @@ def health():
         "status": "ok", "version": VERSION, "whisper_model": whisper_settings()[0], "ollama": ollama,
         "debug_faces": debug_enabled(), "jobs_running": RUNNING["count"], "jobs_known": len(mf.load_all(OUTPUT_DIR)),
         "max_concurrent_jobs": MAX_CONCURRENT_JOBS, "rerenders_queued": RENDER_QUEUE.qsize(),
-        "output_dir": str(OUTPUT_DIR), "libraries_dir": str(LIBRARIES_DIR),
+        "output_dir": str(OUTPUT_DIR), "libraries_dir": str(LIBRARIES_DIR), "root_path": ROOT_PATH,
         "selection": {"min_clip_score": MIN_CLIP_SCORE, "dedup_max_overlap": DEDUP_MAX_OVERLAP},
     }
 
@@ -266,7 +271,7 @@ def generate(req: GenerateRequest):
            "detail": "", "clips": [], "error": None}
     JOBS[job_id] = job
     job_dir = OUTPUT_DIR / job_id
-    threading.Thread(target=_run_queued, args=(job, url, job_dir, f"/output/{job_id}"), daemon=True).start()
+    threading.Thread(target=_run_queued, args=(job, url, job_dir, f"output/{job_id}"), daemon=True).start()
     return {"job_id": job_id}
 
 
@@ -411,7 +416,7 @@ def _export_worker(job_id: str, export_id: str, options: dict) -> None:
                                      progress=lambda msg: state.update({"detail": msg}))
         mf.modify(d, lambda mm: mm.setdefault("libraries", []).append(summary))
         state.update({"stage": "done", "detail": "", "library": summary,
-                      "preview_url": f"/libraries/{summary['library_id']}/index.html"})
+                      "preview_url": f"libraries/{summary['library_id']}/index.html"})
     except Exception as exc:  # noqa: BLE001
         state.update({"stage": "error", "error": f"{exc.__class__.__name__}: {exc}"})
 
@@ -451,7 +456,7 @@ def list_libraries():
                 data = json.loads(lj.read_text(encoding="utf-8"))
                 out.append({"library_id": data["library_id"], "title": data["title"], "client_name": data["client_name"],
                             "clip_count": len(data["clips"]), "created_at": data["created_at"],
-                            "preview_url": f"/libraries/{data['library_id']}/index.html", "path": str(d)})
+                            "preview_url": f"libraries/{data['library_id']}/index.html", "path": str(d)})
             except (OSError, ValueError, KeyError):
                 continue
     return out

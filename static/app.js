@@ -36,7 +36,7 @@ form.addEventListener("submit", async (e) => {
   hideError();
   button.disabled = true;
   try {
-    const { job_id } = await api("POST", "/api/generate", { url: urlInput.value });
+    const { job_id } = await api("POST", "api/generate", { url: urlInput.value });
     showStatus("Waiting for a free slot...");
     await loadJobs();
     await loadJob(job_id);
@@ -48,7 +48,7 @@ form.addEventListener("submit", async (e) => {
 
 // ---------------------------------------------------------------- jobs list
 async function loadJobs() {
-  const jobs = await api("GET", "/api/jobs");
+  const jobs = await api("GET", "api/jobs");
   jobsList.innerHTML = "";
   if (!jobs.length) {
     jobsList.innerHTML = '<li class="m">No jobs yet.</li>';
@@ -76,7 +76,7 @@ async function poll() {
   if (!jobId) return;
   let job;
   try {
-    job = await api("GET", `/api/jobs/${jobId}`);
+    job = await api("GET", `api/jobs/${jobId}`);
   } catch (err) {
     showError(err.message);
     return;
@@ -172,21 +172,21 @@ async function applyStyle(clip, card) {
   const style = card.querySelector(".sel-style").value;
   const font = card.querySelector(".sel-font").value;
   try {
-    await api("PUT", `/api/jobs/${Kivro.currentJobId}/clips/${clip.id}/style`, { style, font });
+    await api("PUT", `api/jobs/${Kivro.currentJobId}/clips/${clip.id}/style`, { style, font });
     poll();
   } catch (err) { showError(err.message); }
 }
 
 async function toggleLibrary(clip) {
   try {
-    await api("PUT", `/api/jobs/${Kivro.currentJobId}/clips/${clip.id}/library`, { selected: !clip.in_library });
+    await api("PUT", `api/jobs/${Kivro.currentJobId}/clips/${clip.id}/library`, { selected: !clip.in_library });
     poll();
   } catch (err) { showError(err.message); }
 }
 
 async function rerender(clip) {
   try {
-    await api("POST", `/api/jobs/${Kivro.currentJobId}/clips/${clip.id}/rerender`);
+    await api("POST", `api/jobs/${Kivro.currentJobId}/clips/${clip.id}/rerender`);
     poll();
   } catch (err) { showError(err.message); }
 }
@@ -212,7 +212,7 @@ Kivro.poll = poll;
 // ---------------------------------------------------------------- boot
 (async function boot() {
   try {
-    Kivro.options = await api("GET", "/api/options");
+    Kivro.options = await api("GET", "api/options");
   } catch (err) { showError(err.message); }
   await loadJobs().catch((e) => showError(e.message));
   const hash = location.hash.replace("#", "");

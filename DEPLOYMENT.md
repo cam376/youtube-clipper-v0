@@ -80,6 +80,7 @@ file next to it for the `${...}` ones.
 | `OLLAMA_URL` | `http://ollama:11434` | the compose service name |
 | `MAX_CONCURRENT_JOBS` | `1` | jobs processed at once; others show "Waiting for a free slot..." |
 | `DEBUG_FACES` | `false` | `true` writes face-tracking contact sheets per clip (development only) |
+| `ROOT_PATH` | empty | URL prefix when hosted under a sub-path (section 8b), e.g. `/vezly.ai` |
 
 To try the high-accuracy mode for everyone:
 ```bash
@@ -154,6 +155,57 @@ for a single shared password.
    log in with user `beta`.
 
 Give each tester the password privately. Rotate it by rerunning step 4-6.
+
+## 8b. Serving under a sub-path (settermonster.com/vezly.ai)
+
+The app can live under a path prefix on an existing domain instead of its
+own host. Every link it emits is relative to the page, so the only
+requirements are: the reverse proxy strips the prefix before forwarding,
+the page is reached with a trailing slash (`/vezly.ai/`, not `/vezly.ai`),
+and `ROOT_PATH` is set so FastAPI's `/docs` links are right.
+
+Set it in `.env` next to `docker-compose.yml`:
+```
+ROOT_PATH=/vezly.ai
+```
+
+Caddy, added inside the existing `settermonster.com { ... }` site block:
+```
+settermonster.com {
+    # ... whatever already serves the main site ...
+
+    redir /vezly.ai /vezly.ai/ permanent
+    handle_path /vezly.ai/* {
+        basic_auth {
+            beta <hash from: caddy hash-password>
+        }
+        reverse_proxy 127.0.0.1:8000
+    }
+}
+```
+`handle_path` strips `/vezly.ai` so the app sees `/`, `/api/...`, `/output/...`.
+
+Nginx equivalent:
+```
+location = /vezly.ai { return 301 /vezly.ai/; }
+location /vezly.ai/ {
+    auth_basic "Kivro beta";
+    auth_basic_user_file /etc/nginx/kivro.htpasswd;
+    proxy_pass http://127.0.0.1:8000/;          # trailing slash = strip the prefix
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 600;
+    client_max_body_size 50m;
+}
+```
+
+Check: `https://settermonster.com/vezly.ai/health` must answer with
+`"root_path": "/vezly.ai"`, and the page must load its styles and list jobs.
+
+A dot inside a path (`vezly.ai`) is legal, but if you own `vezly.ai` as a
+domain, a host is cleaner and avoids the trailing-slash rule entirely:
+`app.vezly.ai` or `vezly.settermonster.com` with the plain block from
+section 8 and `ROOT_PATH` left empty. Both setups work with the same build.
 
 ## 9. Operate
 
